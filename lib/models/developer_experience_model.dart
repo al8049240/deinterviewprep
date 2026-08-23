@@ -98,4 +98,35 @@ const List<DeveloperExperienceModel> devExperiences = [
     keyTakeaway:
         'Salary negotiation is a data problem. Come with market data, quantify your past impact in dollar terms, and always counter in writing after a verbal discussion. Never negotiate against yourself by accepting the first offer.',
   ),
+  DeveloperExperienceModel(
+    id: 'dev_exp_6',
+    title: 'Cross-Region Cloud Migration to BigQuery 🔥',
+    categoryTag: 'Architecture Trade-off',
+    situation:
+        'Our core analytics pipeline was hosted on an inefficient secondary cloud data warehouse. Due to poor cross-region data transfer paths and non-optimized network configurations, our daily analytical queries and bulk data movements were suffering from severe latency, frequent timeouts, and soaring egress network costs.',
+    task:
+        'Migrate our massive data warehouse architecture over to Google Cloud BigQuery. I needed to audit our existing data assets, structure a comprehensive tracking and planning framework, and engineer a high-throughput, optimized data pipeline overcoming the previous network bottlenecks.',
+    action:
+        'Data Profiling & Source Audit: I began by auditing the legacy platform to classify the dataset composition, distinguishing between structured relational tables and semi-structured nested JSON payloads.\n\nVolume & Attribute Inspection: I analyzed the exact scale of our data collections by checking total row counts, column widths, and nested array depths. I mapped out the attributes to understand how they represented business events and how they could be denormalized for BigQuery\'s columnar storage architecture.\n\nMaster Migration Tracking: I programmatically generated a master CSV audit sheet to track the entire migration inventory—recording source table names, row counts, column totals, and target BigQuery dataset mappings. This served as our execution checklist.\n\nPipeline Architecture & Network Optimization: Using Python and BigQuery\'s client libraries, I developed an optimized migration pipeline. To combat previous network inefficiencies, I implemented compressed batch streaming, parallelized chunking by date partitions, and localized staging buckets to minimize cross-region data transfer hops. I also built automated monitoring for job successes and a robust daily incremental ingestion script.',
+    result:
+        'Successfully migrated over 250M+ rows to BigQuery with absolute data integrity verified through our tracking CSV. By resolving the network latency and location bottlenecks, our query performance improved by 70%, network egress costs dropped significantly, and our automated daily ingestion runs smoothly without timeouts.',
+    keyTakeaway:
+        'Cross-region data transfer is a hidden cost multiplier. Always co-locate staging buckets with your target warehouse region, use compressed batch streaming, and build a master tracking CSV before touching a single row of production data.',
+  ),
+  DeveloperExperienceModel(
+    id: 'dev_exp_7',
+    title:
+        'BigQuery Cost & Performance Optimization via Medallion Architecture 🔥',
+    categoryTag: 'Architecture Trade-off',
+    situation:
+        'Our BigQuery data warehouse was plagued by severe performance degradation and escalating slot consumption costs. Because analysts and dashboards continuously queried raw historical tables containing billions of unsorted records, every query performed massive full-table scans, driving up resource usage and query latency.',
+    task:
+        'Redesign the data architecture and processing strategy to isolate historical data, drastically reduce query scan volumes for incremental updates, and lower overall BigQuery slot costs while making data easily accessible for analytics users.',
+    action:
+        'Multi-Layered Architecture Design: I architected a modern three-layer data pipeline structure (Bronze, Silver, Gold) to systematically clean and refine the raw data.\n\nBronze Layer (CDC & History): Configured the Bronze layer to ingest and store raw Change Data Capture (CDC) streams and complete historical records securely without alteration.\n\nSilver Layer & Incremental Optimization: In the Silver layer, I optimized query workloads by leveraging window functions alongside min/max strategies to isolate state changes. Instead of scanning entire tables, the pipeline explicitly targets only the created_time of newly updated records.\n\nPartitioning Strategy: I partitioned the main production tables explicitly by created_time. By combining date-partition pruning with precise filtering on newly updated records, the system restricts scans to only active partitions, preventing full table scans.\n\nGold Layer (Analytics Ready): Built aggregated, consumption-ready Gold tables optimized specifically for business users and BI tools.',
+    result:
+        'Successfully cut BigQuery query scan sizes by over 80% for daily updates, dramatically lowered infrastructure costs, and eliminated resource contention. Analysts can now query clean, structured datasets instantly without triggering expensive full-history scans.',
+    keyTakeaway:
+        'Full-table scans on historical data are a silent budget killer. Implement Medallion Architecture with explicit partition pruning on created_time to restrict scans to active partitions only. The Bronze-Silver-Gold pattern pays for itself within weeks on any warehouse with 100M+ rows.',
+  ),
 ];

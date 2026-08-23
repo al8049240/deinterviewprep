@@ -1,15 +1,24 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:sizer/sizer.dart';
 
-import '../core/app_export.dart';
-import '../providers/bookmark_provider.dart';
-import '../services/performance_service.dart';
-import '../widgets/custom_error_widget.dart';
+import './providers/bookmark_provider.dart';
+import './services/performance_service.dart';
+import './services/supabase_service.dart';
+import './widgets/custom_error_widget.dart';
+import 'core/app_export.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Supabase
+  try {
+    await SupabaseService.initialize();
+  } catch (e) {
+    debugPrint('Failed to initialize Supabase: $e');
+  }
 
   bool hasShownError = false;
 
@@ -28,17 +37,18 @@ void main() async {
     return SizedBox.shrink();
   };
 
-  // 🚨 CRITICAL: Device orientation lock - DO NOT REMOVE
-  Future.wait([
-    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]),
-  ]).then((value) {
-    // Initialise PerformanceService so persisted sessions are loaded on startup
-    PerformanceService().init();
-    GoRouter.optionURLReflectsImperativeAPIs = true;
-    runApp(
-      ChangeNotifierProvider(create: (_) => BookmarkProvider(), child: MyApp()),
-    );
-  });
+  // 🚨 CRITICAL: Device orientation lock - web does not support this, guard with kIsWeb
+  if (!kIsWeb) {
+    await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  }
+
+  // Initialise PerformanceService so persisted sessions are loaded on startup
+  PerformanceService().init();
+  GoRouter.optionURLReflectsImperativeAPIs = true;
+
+  runApp(
+    ChangeNotifierProvider(create: (_) => BookmarkProvider(), child: MyApp()),
+  );
 }
 
 class MyApp extends StatelessWidget {

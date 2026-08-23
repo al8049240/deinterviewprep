@@ -3,15 +3,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/developer_experience_model.dart';
-import '../../models/flashcard_model.dart';
 import '../../providers/bookmark_provider.dart';
 import '../../theme/app_theme.dart';
 import '../code_playground_screen/code_playground_screen.dart';
 import '../developer_experiences_screen/developer_experience_detail_screen.dart';
 import '../flashcards_screen/flashcards_screen.dart';
-import '../quiz_screen/quiz_screen.dart'
-    as quiz_screen
-    show QuizScreen, masterQuestionBank;
+import '../quiz_screen/quiz_screen.dart' as quiz_screen show QuizScreen;
 
 // ── Filter enum ───────────────────────────────────────────────────────────────
 enum BookmarkFilter {
@@ -111,79 +108,86 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
     return Consumer<BookmarkProvider>(
       builder: (context, bookmarkProvider, _) {
         final questionIds = bookmarkProvider.bookmarkedQuestionIds;
-        final quizIds = bookmarkProvider.bookmarkedQuizIds;
-        final flashcardIds = bookmarkProvider.bookmarkedFlashcardIds;
+        final quizQuestions = bookmarkProvider.bookmarkedQuizQuestions;
+        final flashcards = bookmarkProvider.bookmarkedFlashcards;
         final playgroundIds = bookmarkProvider.bookmarkedPlaygroundIds;
         final devExpIds = bookmarkProvider.bookmarkedDevExperienceIds;
+        final realCaseScenarios = bookmarkProvider.bookmarkedRealCaseScenarios;
         final totalCount = bookmarkProvider.totalBookmarkCount;
-        final scenarioCount = questionIds.length;
-        final quizCount = quizIds.length;
-        final flashcardCount = flashcardIds.length;
+
+        final scenarioCount = questionIds.length + realCaseScenarios.length;
+        final quizCount = quizQuestions.length;
+        final flashcardCount = flashcards.length;
         final playgroundCount = playgroundIds.length;
         final devExpCount = devExpIds.length;
 
-        // Build filtered list of entries — each branch is strictly exclusive
+        // Build filtered list of entries
         final List<_BookmarkEntry> entries = [];
+
+        void addQuestionEntries() {
+          for (final id in questionIds) {
+            entries.add(_BookmarkEntry.legacyQuestion(id));
+          }
+        }
+
+        void addRealCaseEntries() {
+          for (final rcs in realCaseScenarios) {
+            entries.add(_BookmarkEntry.realCase(rcs));
+          }
+        }
+
+        void addQuizEntries() {
+          for (final q in quizQuestions) {
+            entries.add(_BookmarkEntry.quiz(q));
+          }
+        }
+
+        void addFlashcardEntries() {
+          for (final fc in flashcards) {
+            entries.add(_BookmarkEntry.flashcard(fc));
+          }
+        }
+
+        void addPlaygroundEntries() {
+          for (final tip in _allPlaygroundTips.where(
+            (t) => playgroundIds.contains(t.id),
+          )) {
+            entries.add(_BookmarkEntry.playground(tip));
+          }
+        }
+
+        void addExperienceEntries() {
+          for (final exp in devExperiences.where(
+            (e) => devExpIds.contains(e.id),
+          )) {
+            entries.add(_BookmarkEntry.experience(exp));
+          }
+        }
 
         switch (_activeFilter) {
           case _BookmarkFilter.all:
-            for (final q in sampleInterviewQuestions.where(
-              (q) => questionIds.contains(q.id),
-            )) {
-              entries.add(_BookmarkEntry.question(q));
-            }
-            for (final id in quizIds) {
-              entries.add(_BookmarkEntry.quiz(id));
-            }
-            for (final card in sampleFlashcards.where(
-              (c) => flashcardIds.contains(c.id),
-            )) {
-              entries.add(_BookmarkEntry.flashcard(card));
-            }
-            for (final tip in _allPlaygroundTips.where(
-              (t) => playgroundIds.contains(t.id),
-            )) {
-              entries.add(_BookmarkEntry.playground(tip));
-            }
-            for (final exp in devExperiences.where(
-              (e) => devExpIds.contains(e.id),
-            )) {
-              entries.add(_BookmarkEntry.experience(exp));
-            }
+            addQuestionEntries();
+            addRealCaseEntries();
+            addQuizEntries();
+            addFlashcardEntries();
+            addPlaygroundEntries();
+            addExperienceEntries();
             break;
           case _BookmarkFilter.scenarios:
-            for (final q in sampleInterviewQuestions.where(
-              (q) => questionIds.contains(q.id),
-            )) {
-              entries.add(_BookmarkEntry.question(q));
-            }
+            addQuestionEntries();
+            addRealCaseEntries();
             break;
           case _BookmarkFilter.quizzes:
-            // Strictly show ONLY quiz-type bookmarks (type == 'quiz')
-            for (final id in quizIds) {
-              entries.add(_BookmarkEntry.quiz(id));
-            }
+            addQuizEntries();
             break;
           case _BookmarkFilter.flashcards:
-            for (final card in sampleFlashcards.where(
-              (c) => flashcardIds.contains(c.id),
-            )) {
-              entries.add(_BookmarkEntry.flashcard(card));
-            }
+            addFlashcardEntries();
             break;
           case _BookmarkFilter.playground:
-            for (final tip in _allPlaygroundTips.where(
-              (t) => playgroundIds.contains(t.id),
-            )) {
-              entries.add(_BookmarkEntry.playground(tip));
-            }
+            addPlaygroundEntries();
             break;
           case _BookmarkFilter.experiences:
-            for (final exp in devExperiences.where(
-              (e) => devExpIds.contains(e.id),
-            )) {
-              entries.add(_BookmarkEntry.experience(exp));
-            }
+            addExperienceEntries();
             break;
         }
 
@@ -244,27 +248,29 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
                                   const SizedBox(height: 10),
                               itemBuilder: (context, i) {
                                 final entry = entries[i];
-                                if (entry.isQuestion &&
-                                    entry.question != null) {
-                                  return _ScenarioBookmarkCard(
-                                    question: entry.question!,
-                                    onTap: () => _openQuestionDetail(
+
+                                if (entry.isRealCase &&
+                                    entry.realCase != null) {
+                                  return _RealCaseBookmarkCard(
+                                    scenario: entry.realCase!,
+                                    onTap: () => _openRealCaseDetail(
                                       context,
-                                      entry.question!,
+                                      entry.realCase!,
                                     ),
                                     onRemove: () {
-                                      bookmarkProvider.removeQuestion(
-                                        entry.question!.id,
+                                      bookmarkProvider.removeRealCaseScenario(
+                                        entry.realCase!.id,
                                       );
                                       _showRemovedSnackBar(context);
                                     },
                                   );
-                                } else if (entry.isQuiz) {
+                                } else if (entry.isQuiz &&
+                                    entry.quizQuestion != null) {
                                   return _QuizBookmarkCard(
-                                    quizId: entry.quizId!,
+                                    question: entry.quizQuestion!,
                                     onRemove: () {
                                       bookmarkProvider.removeQuiz(
-                                        entry.quizId!,
+                                        entry.quizQuestion!.id,
                                       );
                                       _showRemovedSnackBar(context);
                                     },
@@ -336,13 +342,13 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
     );
   }
 
-  void _openQuestionDetail(
+  void _openRealCaseDetail(
     BuildContext context,
-    InterviewQuestionModel question,
+    BookmarkedRealCaseScenario scenario,
   ) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => _QuestionDetailPage(question: question),
+        builder: (_) => _RealCaseDetailPage(scenario: scenario),
       ),
     );
   }
@@ -438,7 +444,7 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Tap 🔖 on any scenario, quiz, flashcard, code tip, or dev experience to save it here.',
+              'Tap 🔖 on any scenario, quiz question, flashcard, code tip, or dev experience to save it here.',
               textAlign: TextAlign.center,
               style: GoogleFonts.dmSans(
                 fontSize: 14,
@@ -455,7 +461,7 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
   Widget _buildFilterEmptyState(_BookmarkFilter filter) {
     final labels = {
       _BookmarkFilter.scenarios: 'scenarios',
-      _BookmarkFilter.quizzes: 'quizzes',
+      _BookmarkFilter.quizzes: 'quiz questions',
       _BookmarkFilter.flashcards: 'flashcards',
       _BookmarkFilter.playground: 'code tips',
       _BookmarkFilter.experiences: 'dev experiences',
@@ -472,69 +478,81 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
 
 // ── Bookmark entry data holder ────────────────────────────────────────────────
 class _BookmarkEntry {
-  final bool isQuestion;
+  final bool isRealCase;
   final bool isQuiz;
   final bool isFlashcard;
   final bool isPlayground;
   final bool isExperience;
-  final InterviewQuestionModel? question;
-  final String? quizId;
-  final FlashcardModel? flashcard;
+  final BookmarkedRealCaseScenario? realCase;
+  final BookmarkedQuizQuestion? quizQuestion;
+  final BookmarkedFlashcard? flashcard;
   final _PlaygroundTip? playgroundTip;
   final DeveloperExperienceModel? experience;
 
-  _BookmarkEntry.question(this.question)
-    : isQuestion = true,
+  _BookmarkEntry.legacyQuestion(String id)
+    : isRealCase = false,
       isQuiz = false,
       isFlashcard = false,
       isPlayground = false,
       isExperience = false,
-      quizId = null,
+      realCase = null,
+      quizQuestion = null,
       flashcard = null,
       playgroundTip = null,
       experience = null;
 
-  _BookmarkEntry.quiz(this.quizId)
-    : isQuestion = false,
+  _BookmarkEntry.realCase(this.realCase)
+    : isRealCase = true,
+      isQuiz = false,
+      isFlashcard = false,
+      isPlayground = false,
+      isExperience = false,
+      quizQuestion = null,
+      flashcard = null,
+      playgroundTip = null,
+      experience = null;
+
+  _BookmarkEntry.quiz(this.quizQuestion)
+    : isRealCase = false,
       isQuiz = true,
       isFlashcard = false,
       isPlayground = false,
       isExperience = false,
-      question = null,
+      realCase = null,
       flashcard = null,
       playgroundTip = null,
       experience = null;
 
   _BookmarkEntry.flashcard(this.flashcard)
-    : isQuestion = false,
+    : isRealCase = false,
       isQuiz = false,
       isFlashcard = true,
       isPlayground = false,
       isExperience = false,
-      question = null,
-      quizId = null,
+      realCase = null,
+      quizQuestion = null,
       playgroundTip = null,
       experience = null;
 
   _BookmarkEntry.playground(this.playgroundTip)
-    : isQuestion = false,
+    : isRealCase = false,
       isQuiz = false,
       isFlashcard = false,
       isPlayground = true,
       isExperience = false,
-      question = null,
-      quizId = null,
+      realCase = null,
+      quizQuestion = null,
       flashcard = null,
       experience = null;
 
   _BookmarkEntry.experience(this.experience)
-    : isQuestion = false,
+    : isRealCase = false,
       isQuiz = false,
       isFlashcard = false,
       isPlayground = false,
       isExperience = true,
-      question = null,
-      quizId = null,
+      realCase = null,
+      quizQuestion = null,
       flashcard = null,
       playgroundTip = null;
 }
@@ -580,7 +598,7 @@ class _FilterPills extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           _Pill(
-            label: 'Quizzes ($quizCount)',
+            label: 'Quiz Qs ($quizCount)',
             isActive: activeFilter == _BookmarkFilter.quizzes,
             onTap: () => onChanged(_BookmarkFilter.quizzes),
           ),
@@ -655,39 +673,38 @@ class _Pill extends StatelessWidget {
   }
 }
 
-// ── Scenario Bookmark Card ────────────────────────────────────────────────────
-class _ScenarioBookmarkCard extends StatelessWidget {
-  final InterviewQuestionModel question;
+// ── Real Case Scenario Bookmark Card ─────────────────────────────────────────
+class _RealCaseBookmarkCard extends StatelessWidget {
+  final BookmarkedRealCaseScenario scenario;
   final VoidCallback onTap;
   final VoidCallback onRemove;
 
-  const _ScenarioBookmarkCard({
-    required this.question,
+  const _RealCaseBookmarkCard({
+    required this.scenario,
     required this.onTap,
     required this.onRemove,
   });
 
-  Color get _difficultyColor {
-    switch (question.difficulty) {
-      case 'Junior':
-        return Colors.green;
-      case 'Mid':
-        return Colors.blue;
-      case 'Senior':
-        return Colors.orange;
-      case 'Lead':
-        return Colors.red;
+  Color _categoryColor(String category) {
+    switch (category.toLowerCase()) {
+      case 'incident response':
+        return const Color(0xFF1565C0);
+      case 'system design':
+        return const Color(0xFF2E7D32);
+      case 'data modeling':
+        return const Color(0xFF6A1B9A);
+      case 'pyspark':
+        return const Color(0xFFE65100);
+      case 'sql':
+        return const Color(0xFF00695C);
       default:
-        return Colors.grey;
+        return const Color(0xFF37474F);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final companyTag = question.companies.isNotEmpty
-        ? '[${question.companies.first[0].toUpperCase()}${question.companies.first.substring(1)}]'
-        : '';
-
+    final catColor = _categoryColor(scenario.category);
     return Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(14),
@@ -705,7 +722,7 @@ class _ScenarioBookmarkCard extends StatelessWidget {
                 width: 4,
                 height: 60,
                 decoration: BoxDecoration(
-                  color: AppTheme.primary,
+                  color: catColor,
                   borderRadius: BorderRadius.circular(4),
                 ),
               ),
@@ -717,32 +734,21 @@ class _ScenarioBookmarkCard extends StatelessWidget {
                     Row(
                       children: [
                         _TypeBadge(
-                          label: 'Scenario',
-                          color: AppTheme.primary.withAlpha(20),
-                          textColor: AppTheme.primaryDark,
+                          label: 'Real Case',
+                          color: catColor.withAlpha(20),
+                          textColor: catColor,
                         ),
                         const SizedBox(width: 6),
                         _TypeBadge(
-                          label: question.difficulty,
-                          color: _difficultyColor.withAlpha(25),
-                          textColor: _difficultyColor,
+                          label: scenario.category,
+                          color: AppTheme.primaryContainer,
+                          textColor: AppTheme.primaryDark,
                         ),
-                        if (companyTag.isNotEmpty) ...[
-                          const SizedBox(width: 6),
-                          Text(
-                            companyTag,
-                            style: GoogleFonts.dmSans(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.primaryDark,
-                            ),
-                          ),
-                        ],
                       ],
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      question.title,
+                      scenario.title,
                       style: GoogleFonts.dmSans(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
@@ -752,25 +758,25 @@ class _ScenarioBookmarkCard extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      question.category,
-                      style: GoogleFonts.dmSans(
-                        fontSize: 12,
-                        color: Colors.grey.shade500,
+                    if (scenario.tags.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        scenario.tags.take(3).map((t) => '#$t').join(' '),
+                        style: GoogleFonts.dmSans(
+                          fontSize: 11,
+                          color: Colors.grey.shade500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
               const SizedBox(width: 8),
               GestureDetector(
                 onTap: onRemove,
-                child: const Icon(
-                  Icons.bookmark,
-                  size: 22,
-                  color: Color(0xFF2E7D32),
-                ),
+                child: Icon(Icons.bookmark, size: 22, color: catColor),
               ),
             ],
           ),
@@ -780,99 +786,19 @@ class _ScenarioBookmarkCard extends StatelessWidget {
   }
 }
 
-// ── Quiz question text lookup ─────────────────────────────────────────────────
-String _quizQuestionText(String quizId) {
-  final match = quiz_screen.masterQuestionBank.firstWhere(
-    (q) => q['id']?.toString() == quizId,
-    orElse: () => const {},
-  );
-
-  // Use 'text' key (as defined in masterQuestionBank), fall back to 'question', 'title', 'prompt'
-  final questionText =
-      match['text'] ?? match['question'] ?? match['title'] ?? match['prompt'];
-
-  return (questionText is String && questionText.trim().isNotEmpty)
-      ? questionText
-      : quizId;
-}
-
 // ── Quiz Bookmark Card ────────────────────────────────────────────────────────
-
-/// Resolves the [topicId] and [topicName] for a given [quizId] by looking up
-/// its category in [masterQuestionBank]. Falls back to the prefix-based mapping
-/// for any IDs not found in the bank.
-Map<String, String> _resolveQuizTopic(String quizId) {
-  // 1. Direct lookup in masterQuestionBank by question id
-  final match = quiz_screen.masterQuestionBank.firstWhere(
-    (q) => q['id'] == quizId,
-    orElse: () => const {},
-  );
-
-  if (match.isNotEmpty) {
-    final category = match['category'] as String;
-    return {'topicId': category, 'topicName': _topicNameForId(category)};
-  }
-
-  // 2. Prefix-based fallback for any future IDs not in the bank
-  const prefixMap = <String, String>{
-    'sql_': 'sql',
-    'py_': 'python',
-    'etl_': 'etl',
-    'spark_': 'spark',
-    'kafka_': 'kafka',
-    'airflow_': 'airflow',
-    'dbt_': 'dbt',
-    'dm_': 'datamodeling',
-    'cloud_': 'cloud',
-    'docker_': 'docker',
-    'nosql_': 'nosql',
-    'dataops_': 'dataops',
-    'meta_quiz_': 'datamodeling',
-    'snow_quiz_': 'cloud',
-    'dbx_quiz_': 'spark',
-  };
-
-  for (final entry in prefixMap.entries) {
-    if (quizId.startsWith(entry.key)) {
-      final id = entry.value;
-      return {'topicId': id, 'topicName': _topicNameForId(id)};
-    }
-  }
-
-  // 3. Ultimate fallback
-  return {'topicId': 'sql', 'topicName': 'SQL & Query Optimization'};
-}
-
-/// Maps a topic [id] to its human-readable display name.
-String _topicNameForId(String id) {
-  const nameMap = <String, String>{
-    'sql': 'SQL & Query Optimization',
-    'python': 'Python for Data Engineering',
-    'etl': 'ETL Pipelines & Workflows',
-    'spark': 'Apache Spark & Big Data',
-    'kafka': 'Kafka & Streaming Data',
-    'airflow': 'Apache Airflow & Orchestration',
-    'cloud': 'Cloud Data Platforms (AWS/GCP)',
-    'dbt': 'dbt & Data Transformation',
-    'datamodeling': 'Data Modeling & Warehousing',
-    'docker': 'Docker & Containerization',
-    'nosql': 'NoSQL Databases',
-    'dataops': 'DataOps & CI/CD for Data',
-  };
-  return nameMap[id] ?? id;
-}
-
 class _QuizBookmarkCard extends StatelessWidget {
-  final String quizId;
+  final BookmarkedQuizQuestion question;
   final VoidCallback onRemove;
 
-  const _QuizBookmarkCard({required this.quizId, required this.onRemove});
+  const _QuizBookmarkCard({required this.question, required this.onRemove});
 
   @override
   Widget build(BuildContext context) {
-    final topic = _resolveQuizTopic(quizId);
-    final topicId = topic['topicId']!;
-    final topicName = topic['topicName']!;
+    final topicId = question.topicId.isNotEmpty ? question.topicId : 'sql';
+    final topicName = question.topicName.isNotEmpty
+        ? question.topicName
+        : 'SQL & Query Optimization';
 
     return Material(
       color: Colors.white,
@@ -882,22 +808,13 @@ class _QuizBookmarkCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () {
-          // Look up the exact bookmarked question from masterQuestionBank
-          final questionMap = quiz_screen.masterQuestionBank.firstWhere(
-            (q) => q['id'] == quizId,
-            orElse: () => const {},
-          );
-
           Navigator.push(
             context,
             MaterialPageRoute(
               builder: (context) => quiz_screen.QuizScreen(
                 topicId: topicId,
                 topicName: topicName,
-                questionCount: 1,
-                overrideQuestions: questionMap.isNotEmpty
-                    ? [questionMap]
-                    : null,
+                questionCount: 999,
               ),
             ),
           );
@@ -920,14 +837,26 @@ class _QuizBookmarkCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _TypeBadge(
-                      label: 'Quiz',
-                      color: Colors.purple.shade50,
-                      textColor: Colors.purple.shade700,
+                    Row(
+                      children: [
+                        _TypeBadge(
+                          label: 'Quiz Q',
+                          color: Colors.purple.shade50,
+                          textColor: Colors.purple.shade700,
+                        ),
+                        if (question.difficulty.isNotEmpty) ...[
+                          const SizedBox(width: 6),
+                          _TypeBadge(
+                            label: question.difficulty,
+                            color: AppTheme.primaryContainer,
+                            textColor: AppTheme.primaryDark,
+                          ),
+                        ],
+                      ],
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      _quizQuestionText(quizId),
+                      question.text.isNotEmpty ? question.text : topicName,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.dmSans(
@@ -969,7 +898,7 @@ class _QuizBookmarkCard extends StatelessWidget {
 
 // ── Flashcard Bookmark Card ───────────────────────────────────────────────────
 class _FlashcardBookmarkCard extends StatelessWidget {
-  final FlashcardModel card;
+  final BookmarkedFlashcard card;
   final VoidCallback onTap;
   final VoidCallback onRemove;
 
@@ -1014,12 +943,14 @@ class _FlashcardBookmarkCard extends StatelessWidget {
                           color: Colors.teal.shade50,
                           textColor: Colors.teal.shade700,
                         ),
-                        const SizedBox(width: 6),
-                        _TypeBadge(
-                          label: card.category,
-                          color: AppTheme.primaryContainer,
-                          textColor: AppTheme.primaryDark,
-                        ),
+                        if (card.category.isNotEmpty) ...[
+                          const SizedBox(width: 6),
+                          _TypeBadge(
+                            label: card.category,
+                            color: AppTheme.primaryContainer,
+                            textColor: AppTheme.primaryDark,
+                          ),
+                        ],
                       ],
                     ),
                     const SizedBox(height: 8),
@@ -1033,7 +964,7 @@ class _FlashcardBookmarkCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      card.front,
+                      card.front.isNotEmpty ? card.front : 'Flashcard',
                       style: GoogleFonts.dmSans(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
@@ -1043,26 +974,28 @@ class _FlashcardBookmarkCard extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      '💡 Back',
-                      style: GoogleFonts.dmSans(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.grey.shade500,
+                    if (card.back.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        '💡 Back',
+                        style: GoogleFonts.dmSans(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.grey.shade500,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      card.back,
-                      style: GoogleFonts.dmSans(
-                        fontSize: 12,
-                        color: Colors.grey.shade700,
-                        height: 1.4,
+                      const SizedBox(height: 2),
+                      Text(
+                        card.back,
+                        style: GoogleFonts.dmSans(
+                          fontSize: 12,
+                          color: Colors.grey.shade700,
+                          height: 1.4,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    ],
                   ],
                 ),
               ),
@@ -1315,36 +1248,39 @@ class _TypeBadge extends StatelessWidget {
   }
 }
 
-// ── Question Detail Page ──────────────────────────────────────────────────────
-class _QuestionDetailPage extends StatelessWidget {
-  final InterviewQuestionModel question;
-  const _QuestionDetailPage({required this.question});
+// ── Real Case Detail Page ─────────────────────────────────────────────────────
+class _RealCaseDetailPage extends StatelessWidget {
+  final BookmarkedRealCaseScenario scenario;
+  const _RealCaseDetailPage({required this.scenario});
 
-  Color get _difficultyColor {
-    switch (question.difficulty) {
-      case 'Junior':
-        return Colors.green;
-      case 'Mid':
-        return Colors.blue;
-      case 'Senior':
-        return Colors.orange;
-      case 'Lead':
-        return Colors.red;
+  Color _categoryColor(String category) {
+    switch (category.toLowerCase()) {
+      case 'incident response':
+        return const Color(0xFF1565C0);
+      case 'system design':
+        return const Color(0xFF2E7D32);
+      case 'data modeling':
+        return const Color(0xFF6A1B9A);
+      case 'pyspark':
+        return const Color(0xFFE65100);
+      case 'sql':
+        return const Color(0xFF00695C);
       default:
-        return Colors.grey;
+        return const Color(0xFF37474F);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final catColor = _categoryColor(scenario.category);
     return Consumer<BookmarkProvider>(
       builder: (context, bookmarkProvider, _) {
-        final isBookmarked = bookmarkProvider.isQuestionBookmarked(question.id);
+        final isBookmarked = bookmarkProvider.isRealCaseBookmarked(scenario.id);
         return Scaffold(
           backgroundColor: AppTheme.backgroundLight,
           appBar: AppBar(
             title: Text(
-              'Question Detail',
+              'Real Case Scenario',
               style: GoogleFonts.dmSans(
                 fontWeight: FontWeight.w700,
                 color: Colors.white,
@@ -1364,50 +1300,28 @@ class _QuestionDetailPage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _difficultyColor.withAlpha(25),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        question.difficulty,
-                        style: GoogleFonts.dmSans(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: _difficultyColor,
-                        ),
-                      ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: catColor.withAlpha(20),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: catColor.withAlpha(60)),
+                  ),
+                  child: Text(
+                    scenario.category,
+                    style: GoogleFonts.dmSans(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: catColor,
                     ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppTheme.primaryContainer,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        question.category,
-                        style: GoogleFonts.dmSans(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.primaryDark,
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
                 const SizedBox(height: 14),
                 Text(
-                  question.title,
+                  scenario.title,
                   style: GoogleFonts.dmSans(
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
@@ -1415,32 +1329,86 @@ class _QuestionDetailPage extends StatelessWidget {
                     height: 1.3,
                   ),
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  'Problem Statement',
-                  style: GoogleFonts.dmSans(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.primary,
+                if (scenario.tags.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: scenario.tags
+                        .map(
+                          (tag) => Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              '#$tag',
+                              style: GoogleFonts.dmSans(
+                                fontSize: 11,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(),
                   ),
+                ],
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Container(
+                      width: 3,
+                      height: 16,
+                      decoration: BoxDecoration(
+                        color: AppTheme.primary,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Problem Statement',
+                      style: GoogleFonts.dmSans(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.primary,
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  question.description,
+                  scenario.problemStatement,
                   style: GoogleFonts.dmSans(
                     fontSize: 14,
-                    color: const Color(0xFF444444),
+                    color: const Color(0xFF333333),
                     height: 1.6,
                   ),
                 ),
                 const SizedBox(height: 20),
-                Text(
-                  'Solution Breakdown',
-                  style: GoogleFonts.dmSans(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.primary,
-                  ),
+                Row(
+                  children: [
+                    Container(
+                      width: 3,
+                      height: 16,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1565C0),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Solution Breakdown',
+                      style: GoogleFonts.dmSans(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF1565C0),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 8),
                 Container(
@@ -1452,43 +1420,14 @@ class _QuestionDetailPage extends StatelessWidget {
                     border: Border.all(color: AppTheme.primaryContainer),
                   ),
                   child: Text(
-                    question.answer,
-                    style: GoogleFonts.sourceCodePro(
-                      fontSize: 12,
-                      color: const Color(0xFF1A1A1A),
+                    scenario.solutionBreakdown,
+                    style: GoogleFonts.dmSans(
+                      fontSize: 13,
+                      color: const Color(0xFF333333),
                       height: 1.6,
                     ),
                   ),
                 ),
-                if (question.tags.isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 4,
-                    children: question.tags
-                        .map(
-                          (tag) => Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 3,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade100,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              '#$tag',
-                              style: GoogleFonts.dmSans(
-                                fontSize: 11,
-                                color: Colors.grey.shade600,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                ],
               ],
             ),
           ),
@@ -1549,31 +1488,27 @@ class _QuestionDetailPage extends StatelessWidget {
                     ),
                     child: IconButton(
                       onPressed: () {
-                        final added = bookmarkProvider.toggleQuestion(
-                          question.id,
-                        );
-                        ScaffoldMessenger.of(context).clearSnackBars();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              added
-                                  ? 'Question saved to Bookmarks'
-                                  : 'Removed from Bookmarks',
-                              style: GoogleFonts.dmSans(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
+                        if (isBookmarked) {
+                          bookmarkProvider.removeRealCaseScenario(scenario.id);
+                          ScaffoldMessenger.of(context).clearSnackBars();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Removed from Bookmarks',
+                                style: GoogleFonts.dmSans(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              duration: const Duration(seconds: 2),
+                              behavior: SnackBarBehavior.floating,
+                              backgroundColor: Colors.grey.shade700,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
                               ),
                             ),
-                            duration: const Duration(seconds: 2),
-                            behavior: SnackBarBehavior.floating,
-                            backgroundColor: added
-                                ? const Color(0xFF2E7D32)
-                                : Colors.grey.shade700,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                        );
+                          );
+                        }
                       },
                       icon: Icon(
                         isBookmarked ? Icons.bookmark : Icons.bookmark_border,

@@ -9,7 +9,6 @@ import './widgets/results_header_widget.dart';
 import './widgets/results_metrics_row_widget.dart';
 import './widgets/results_score_gauge_widget.dart';
 import './widgets/results_topic_breakdown_widget.dart';
-import '../leaderboard_screen/leaderboard_screen.dart';
 
 class ResultsScreen extends StatefulWidget {
   final String topicName;
@@ -206,19 +205,16 @@ class _ResultsScreenState extends State<ResultsScreen>
                 timeTaken: _formattedTime,
                 accuracyPercent: _accuracyPercent,
               ),
-              if (widget.maxStreak > 0) ...[
-                const SizedBox(height: 12),
-                _buildStreakCard(),
-              ],
+              const SizedBox(height: 12),
+              _buildStreakCard(),
               const SizedBox(height: 16),
               ResultsTopicBreakdownWidget(
                 topicId: widget.topicId,
                 topicName: widget.topicName,
                 correctAnswers: widget.correctAnswers,
                 totalQuestions: widget.totalQuestions,
+                questions: widget.questions,
               ),
-              const SizedBox(height: 16),
-              _buildLeaderboardNote(),
               const SizedBox(height: 16),
               _buildUnlockQuestionsButton(),
               const SizedBox(height: 20),
@@ -270,6 +266,7 @@ class _ResultsScreenState extends State<ResultsScreen>
                         topicName: widget.topicName,
                         correctAnswers: widget.correctAnswers,
                         totalQuestions: widget.totalQuestions,
+                        questions: widget.questions,
                       ),
                     ),
                   ],
@@ -281,12 +278,8 @@ class _ResultsScreenState extends State<ResultsScreen>
                   timeTaken: _formattedTime,
                   accuracyPercent: _accuracyPercent,
                 ),
-                if (widget.maxStreak > 0) ...[
-                  const SizedBox(height: 12),
-                  _buildStreakCard(),
-                ],
-                const SizedBox(height: 16),
-                _buildLeaderboardNote(),
+                const SizedBox(height: 12),
+                _buildStreakCard(),
                 const SizedBox(height: 16),
                 _buildUnlockQuestionsButton(),
                 const SizedBox(height: 20),
@@ -331,13 +324,19 @@ class _ResultsScreenState extends State<ResultsScreen>
             color: Colors.white,
             size: 28,
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 4),
+          const Icon(
+            Icons.local_fire_department_rounded,
+            color: Colors.white70,
+            size: 20,
+          ),
+          const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Best Streak',
+                  'Max Streak',
                   style: GoogleFonts.dmSans(
                     fontSize: 12,
                     color: Colors.white70,
@@ -345,7 +344,9 @@ class _ResultsScreenState extends State<ResultsScreen>
                   ),
                 ),
                 Text(
-                  '${widget.maxStreak} consecutive correct answer${widget.maxStreak == 1 ? '' : 's'}',
+                  widget.maxStreak > 0
+                      ? '${widget.maxStreak} consecutive correct answer${widget.maxStreak == 1 ? '' : 's'}'
+                      : 'No streak this round — keep going!',
                   style: GoogleFonts.dmSans(
                     fontSize: 14,
                     color: Colors.white,
@@ -361,13 +362,24 @@ class _ResultsScreenState extends State<ResultsScreen>
               color: Colors.white.withAlpha(51),
               borderRadius: BorderRadius.circular(20),
             ),
-            child: Text(
-              '🔥 ${widget.maxStreak}',
-              style: GoogleFonts.dmSans(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
-              ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.local_fire_department_rounded,
+                  color: Colors.white,
+                  size: 18,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '${widget.maxStreak}',
+                  style: GoogleFonts.dmSans(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -459,46 +471,6 @@ class _ResultsScreenState extends State<ResultsScreen>
         topicName: widget.topicName,
         questions: widget.questions,
         topicId: widget.topicId,
-      ),
-    );
-  }
-
-  Widget _buildLeaderboardNote() {
-    return GestureDetector(
-      onTap: () => Navigator.of(
-        context,
-      ).push(MaterialPageRoute(builder: (_) => const LeaderboardScreen())),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: const Color(0xFF2E7D32),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Row(
-          children: [
-            const Icon(
-              Icons.leaderboard_rounded,
-              color: Colors.white,
-              size: 20,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'Your results are updated on the quiz leaderboard',
-                style: GoogleFonts.dmSans(
-                  fontSize: 13,
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            const Icon(
-              Icons.chevron_right_rounded,
-              color: Colors.white,
-              size: 18,
-            ),
-          ],
-        ),
       ),
     );
   }

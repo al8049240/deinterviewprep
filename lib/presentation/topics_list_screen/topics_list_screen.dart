@@ -3,9 +3,11 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../routes/app_routes.dart';
+import '../../services/pro_service.dart';
+import '../../services/quiz_service.dart';
 import '../../theme/app_theme.dart';
 import '../bookmarks_screen/bookmarks_screen.dart';
-import '../leaderboard_screen/leaderboard_screen.dart';
+import '../performance_trends_screen/performance_trends_screen.dart';
 import './widgets/category_filter_widget.dart';
 import './widgets/customize_quiz_sheet_widget.dart';
 import './widgets/pro_banner_widget.dart';
@@ -50,6 +52,100 @@ class TopicModel {
   }
 }
 
+// ── Static topic metadata (display config only — no hardcoded question counts) ──
+const List<Map<String, dynamic>> _kTopicMeta = [
+  {
+    'dbName': 'Apache Spark',
+    'id': 'apache_spark',
+    'name': 'Apache Spark',
+    'category': 'Big Data',
+    'iconName': 'bolt',
+    'isPro': true,
+    'iconColor': 0xFFE64A19,
+  },
+  {
+    'dbName': 'SQL',
+    'id': 'sql',
+    'name': 'SQL',
+    'category': 'Database',
+    'iconName': 'storage',
+    'isPro': false,
+    'iconColor': 0xFF1565C0,
+  },
+  {
+    'dbName': 'Python',
+    'id': 'python',
+    'name': 'Python',
+    'category': 'Programming',
+    'iconName': 'code',
+    'isPro': false,
+    'iconColor': 0xFF2E7D32,
+  },
+  {
+    'dbName': 'Kafka',
+    'id': 'kafka',
+    'name': 'Kafka',
+    'category': 'Streaming',
+    'iconName': 'stream',
+    'isPro': true,
+    'iconColor': 0xFF6A1B9A,
+  },
+  {
+    'dbName': 'Apache Airflow',
+    'id': 'apache_airflow',
+    'name': 'Apache Airflow',
+    'category': 'Pipelines',
+    'iconName': 'air',
+    'isPro': false,
+    'iconColor': 0xFF00838F,
+  },
+  {
+    'dbName': 'Data Modeling',
+    'id': 'data_modeling',
+    'name': 'Data Modeling',
+    'category': 'Database',
+    'iconName': 'schema',
+    'isPro': false,
+    'iconColor': 0xFF4527A0,
+  },
+  {
+    'dbName': 'Data Warehouse',
+    'id': 'data_warehouse',
+    'name': 'Data Warehouse',
+    'category': 'Database',
+    'iconName': 'warehouse',
+    'isPro': true,
+    'iconColor': 0xFF1976D2,
+  },
+  {
+    'dbName': 'Cloud',
+    'id': 'cloud',
+    'name': 'Cloud',
+    'category': 'Cloud',
+    'iconName': 'cloud',
+    'isPro': true,
+    'iconColor': 0xFF0277BD,
+  },
+  {
+    'dbName': 'Docker & DevOps',
+    'id': 'docker_devops',
+    'name': 'Docker & DevOps',
+    'category': 'DevOps',
+    'iconName': 'inventory_2',
+    'isPro': false,
+    'iconColor': 0xFF37474F,
+  },
+  {
+    'dbName': 'Big Data Fundamentals',
+    'id': 'big_data',
+    'name': 'Big Data Fundamentals',
+    'category': 'Big Data',
+    'iconName': 'dataset',
+    'isPro': false,
+    'iconColor': 0xFF558B2F,
+  },
+];
+
 class TopicsListScreen extends StatefulWidget {
   const TopicsListScreen({super.key});
 
@@ -59,148 +155,14 @@ class TopicsListScreen extends StatefulWidget {
 
 class _TopicsListScreenState extends State<TopicsListScreen>
     with TickerProviderStateMixin {
-  // TODO: Replace with [Riverpod/Bloc] for production
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   String _selectedCategory = 'All';
   late List<TopicModel> _topics;
   late AnimationController _fabAnimController;
   late Animation<double> _fabScaleAnim;
-
-  final List<Map<String, dynamic>> _topicMaps = [
-    {
-      'id': 'sql',
-      'name': 'SQL & Query Optimization',
-      'category': 'Database',
-      'iconName': 'storage',
-      'questionCount': 85,
-      'accuracyPercent': 72.0,
-      'isPro': false,
-      'iconColor': 0xFF1565C0,
-      'completedQuizzes': 6,
-    },
-    {
-      'id': 'python',
-      'name': 'Python for Data Engineering',
-      'category': 'Programming',
-      'iconName': 'code',
-      'questionCount': 110,
-      'accuracyPercent': 58.5,
-      'isPro': false,
-      'iconColor': 0xFF2E7D32,
-      'completedQuizzes': 4,
-    },
-    {
-      'id': 'etl',
-      'name': 'ETL Pipelines & Workflows',
-      'category': 'Pipelines',
-      'iconName': 'swap_horiz',
-      'questionCount': 65,
-      'accuracyPercent': 81.0,
-      'isPro': false,
-      'iconColor': 0xFFF57F17,
-      'completedQuizzes': 8,
-    },
-    {
-      'id': 'spark',
-      'name': 'Apache Spark & Big Data',
-      'category': 'Big Data',
-      'iconName': 'bolt',
-      'questionCount': 90,
-      'accuracyPercent': 44.0,
-      'isPro': true,
-      'iconColor': 0xFFE64A19,
-      'completedQuizzes': 2,
-    },
-    {
-      'id': 'kafka',
-      'name': 'Kafka & Streaming Data',
-      'category': 'Streaming',
-      'iconName': 'stream',
-      'questionCount': 70,
-      'accuracyPercent': 0.0,
-      'isPro': true,
-      'iconColor': 0xFF6A1B9A,
-      'completedQuizzes': 0,
-    },
-    {
-      'id': 'airflow',
-      'name': 'Apache Airflow & Orchestration',
-      'category': 'Pipelines',
-      'iconName': 'air',
-      'questionCount': 55,
-      'accuracyPercent': 63.0,
-      'isPro': false,
-      'iconColor': 0xFF00838F,
-      'completedQuizzes': 3,
-    },
-    {
-      'id': 'cloud',
-      'name': 'Cloud Data Platforms (AWS/GCP)',
-      'category': 'Cloud',
-      'iconName': 'cloud',
-      'questionCount': 95,
-      'accuracyPercent': 0.0,
-      'isPro': true,
-      'iconColor': 0xFF1976D2,
-      'completedQuizzes': 0,
-    },
-    {
-      'id': 'dbt',
-      'name': 'dbt & Data Transformation',
-      'category': 'Database',
-      'iconName': 'transform',
-      'questionCount': 48,
-      'accuracyPercent': 77.5,
-      'isPro': false,
-      'iconColor': 0xFF558B2F,
-      'completedQuizzes': 5,
-    },
-    {
-      'id': 'datamodeling',
-      'name': 'Data Modeling & Warehousing',
-      'category': 'Database',
-      'iconName': 'schema',
-      'questionCount': 72,
-      'accuracyPercent': 55.0,
-      'isPro': false,
-      'iconColor': 0xFF4527A0,
-      'completedQuizzes': 3,
-    },
-    {
-      'id': 'docker',
-      'name': 'Docker & Containerization',
-      'category': 'DevOps',
-      'iconName': 'inventory_2',
-      'questionCount': 40,
-      'accuracyPercent': 0.0,
-      'isPro': true,
-      'iconColor': 0xFF0277BD,
-      'completedQuizzes': 0,
-    },
-    {
-      'id': 'nosql',
-      'name': 'NoSQL Databases',
-      'category': 'Database',
-      'iconName': 'dataset',
-      'questionCount': 60,
-      'accuracyPercent': 68.0,
-      'isPro': false,
-      'iconColor': 0xFF00695C,
-      'completedQuizzes': 4,
-    },
-    {
-      'id': 'dataops',
-      'name': 'DataOps & CI/CD for Data',
-      'category': 'DevOps',
-      'iconName': 'loop',
-      'questionCount': 35,
-      'accuracyPercent': 0.0,
-      'isPro': true,
-      'iconColor': 0xFF37474F,
-      'completedQuizzes': 0,
-    },
-  ];
+  bool _isProUnlocked = false;
+  final ProService _proService = ProService();
 
   final List<String> _categories = [
     'All',
@@ -216,7 +178,18 @@ class _TopicsListScreenState extends State<TopicsListScreen>
   @override
   void initState() {
     super.initState();
-    _topics = _topicMaps.map(TopicModel.fromMap).toList();
+    // Build initial list with 0 question counts — will be updated from DB
+    _topics = _kTopicMeta
+        .map(
+          (meta) => TopicModel.fromMap({
+            ...meta,
+            'questionCount': 0,
+            'accuracyPercent': 0.0,
+            'completedQuizzes': 0,
+          }),
+        )
+        .toList();
+    _isProUnlocked = _proService.isProUnlocked;
     _fabAnimController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),
@@ -227,6 +200,30 @@ class _TopicsListScreenState extends State<TopicsListScreen>
     Future.delayed(const Duration(milliseconds: 400), () {
       if (mounted) _fabAnimController.forward();
     });
+    _fetchLiveCounts();
+  }
+
+  /// Fetch live question counts per topic from Supabase and update the list.
+  Future<void> _fetchLiveCounts() async {
+    try {
+      final counts = await QuizService.instance.fetchTopicQuestionCounts();
+      if (mounted && counts.isNotEmpty) {
+        setState(() {
+          _topics = _kTopicMeta.map((meta) {
+            final dbName = meta['dbName'] as String;
+            final liveCount = counts[dbName] ?? 0;
+            return TopicModel.fromMap({
+              ...meta,
+              'questionCount': liveCount,
+              'accuracyPercent': 0.0,
+              'completedQuizzes': 0,
+            });
+          }).toList();
+        });
+      }
+    } catch (_) {
+      // Silently fall back to 0 counts
+    }
   }
 
   @override
@@ -249,18 +246,48 @@ class _TopicsListScreenState extends State<TopicsListScreen>
   }
 
   void _onTopicTap(TopicModel topic) {
-    if (topic.isPro) {
+    if (topic.isPro && !_isProUnlocked) {
       _showProDialog(topic);
       return;
     }
+    // All topics go to the generic subtopic screen
+    _navigateToSubtopics(topic);
+  }
+
+  void _navigateToSubtopics(TopicModel topic) {
     context.push(
-      AppRoutes.quizScreen,
+      AppRoutes.subtopicScreen,
       extra: {
-        'topicId': topic.id,
-        'topicName': topic.name,
-        'questionCount': 15,
+        'topicName': _dbNameFor(topic.id),
+        'topicColor': topic.iconColor.value,
+        'topicIcon': _iconDataFor(topic.iconName),
       },
     );
+  }
+
+  /// Map topic id back to the canonical DB name
+  String _dbNameFor(String id) {
+    final meta = _kTopicMeta.firstWhere(
+      (m) => m['id'] == id,
+      orElse: () => _kTopicMeta.first,
+    );
+    return meta['dbName'] as String;
+  }
+
+  IconData _iconDataFor(String iconName) {
+    const map = <String, IconData>{
+      'bolt': Icons.bolt_rounded,
+      'storage': Icons.storage_rounded,
+      'code': Icons.code_rounded,
+      'stream': Icons.stream_rounded,
+      'air': Icons.air_rounded,
+      'schema': Icons.schema_rounded,
+      'warehouse': Icons.warehouse_rounded,
+      'cloud': Icons.cloud_rounded,
+      'inventory_2': Icons.inventory_2_rounded,
+      'dataset': Icons.dataset_rounded,
+    };
+    return map[iconName] ?? Icons.quiz_rounded;
   }
 
   void _showProDialog(TopicModel topic) {
@@ -270,8 +297,23 @@ class _TopicsListScreenState extends State<TopicsListScreen>
       backgroundColor: Colors.transparent,
       builder: (_) => _TopicLockedSheet(
         topicName: topic.name,
-        onUnlock: () {
-          Navigator.pop(context);
+        onUnlock: () async {
+          await _proService.unlockPro();
+          if (mounted) {
+            setState(() => _isProUnlocked = true);
+            Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  '🎉 Serious Mode unlocked! All topics are now accessible.',
+                  style: GoogleFonts.dmSans(fontWeight: FontWeight.w600),
+                ),
+                backgroundColor: AppTheme.primary,
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+            _navigateToSubtopics(topic);
+          }
         },
       ),
     );
@@ -321,6 +363,7 @@ class _TopicsListScreenState extends State<TopicsListScreen>
               onSelected: (cat) => setState(() => _selectedCategory = cat),
             ),
             const ProBannerWidget(),
+            _BuildCustomMockBanner(),
             Expanded(
               child: filtered.isEmpty
                   ? _buildEmptyState(theme)
@@ -329,19 +372,6 @@ class _TopicsListScreenState extends State<TopicsListScreen>
                   : _buildPhoneList(filtered),
             ),
           ],
-        ),
-      ),
-      floatingActionButton: ScaleTransition(
-        scale: _fabScaleAnim,
-        child: FloatingActionButton.extended(
-          onPressed: _showCustomizeSheet,
-          backgroundColor: AppTheme.secondary,
-          foregroundColor: Colors.white,
-          icon: const Icon(Icons.tune_rounded),
-          label: Text(
-            'Customize Quiz',
-            style: GoogleFonts.dmSans(fontWeight: FontWeight.w600),
-          ),
         ),
       ),
     );
@@ -412,31 +442,17 @@ class _TopicsListScreenState extends State<TopicsListScreen>
           ),
         ),
         Container(
-          margin: const EdgeInsets.only(right: 8),
-          decoration: BoxDecoration(
-            color: Colors.white.withAlpha(38),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: IconButton(
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const LeaderboardScreen()),
-            ),
-            icon: const Icon(
-              Icons.emoji_events_rounded,
-              color: AppTheme.secondary,
-              size: 22,
-            ),
-            tooltip: 'Leaderboard',
-          ),
-        ),
-        Container(
           margin: const EdgeInsets.only(right: 12),
           decoration: BoxDecoration(
             color: Colors.white.withAlpha(38),
             shape: BoxShape.circle,
           ),
           child: IconButton(
-            onPressed: () {},
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const PerformanceTrendsScreen(),
+              ),
+            ),
             icon: const Icon(
               Icons.person_rounded,
               color: Colors.white,
@@ -453,7 +469,7 @@ class _TopicsListScreenState extends State<TopicsListScreen>
     return RefreshIndicator(
       color: AppTheme.primary,
       onRefresh: () async {
-        await Future.delayed(const Duration(milliseconds: 800));
+        await _fetchLiveCounts();
       },
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
@@ -464,6 +480,7 @@ class _TopicsListScreenState extends State<TopicsListScreen>
             child: TopicCardWidget(
               topic: topics[i],
               onTap: () => _onTopicTap(topics[i]),
+              isProUnlocked: _isProUnlocked,
             ),
           );
         },
@@ -484,6 +501,7 @@ class _TopicsListScreenState extends State<TopicsListScreen>
       itemBuilder: (ctx, i) => TopicCardWidget(
         topic: topics[i],
         onTap: () => _onTopicTap(topics[i]),
+        isProUnlocked: _isProUnlocked,
       ),
     );
   }
@@ -537,11 +555,24 @@ class _TopicsListScreenState extends State<TopicsListScreen>
 
 // ── Topic Locked Upgrade Sheet ────────────────────────────────────────────────
 
-class _TopicLockedSheet extends StatelessWidget {
+class _TopicLockedSheet extends StatefulWidget {
   final String topicName;
   final VoidCallback onUnlock;
 
   const _TopicLockedSheet({required this.topicName, required this.onUnlock});
+
+  @override
+  State<_TopicLockedSheet> createState() => _TopicLockedSheetState();
+}
+
+class _TopicLockedSheetState extends State<_TopicLockedSheet> {
+  bool _isLoading = false;
+
+  Future<void> _handleUnlock() async {
+    setState(() => _isLoading = true);
+    await Future.delayed(const Duration(milliseconds: 600));
+    widget.onUnlock();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -567,7 +598,6 @@ class _TopicLockedSheet extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Handle bar
             Container(
               width: 40,
               height: 4,
@@ -599,7 +629,7 @@ class _TopicLockedSheet extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              '"$topicName" is a Serious Mode topic. Unlock all questions, detailed explanations, and more.',
+              '"${widget.topicName}" is a Serious Mode topic. Unlock all questions, detailed explanations, and more.',
               textAlign: TextAlign.center,
               style: GoogleFonts.dmSans(
                 fontSize: 13,
@@ -608,7 +638,6 @@ class _TopicLockedSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 20),
-            // Comparison table
             Container(
               decoration: BoxDecoration(
                 border: Border.all(color: Colors.grey.shade200),
@@ -731,7 +760,6 @@ class _TopicLockedSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 24),
-            // CTA button — orange/gold gradient
             SizedBox(
               width: double.infinity,
               child: DecoratedBox(
@@ -751,7 +779,7 @@ class _TopicLockedSheet extends StatelessWidget {
                   ],
                 ),
                 child: ElevatedButton(
-                  onPressed: onUnlock,
+                  onPressed: _isLoading ? null : _handleUnlock,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.transparent,
                     shadowColor: Colors.transparent,
@@ -762,20 +790,29 @@ class _TopicLockedSheet extends StatelessWidget {
                     ),
                     elevation: 0,
                   ),
-                  child: Text(
-                    '\$19.99 — One-time payment • Lifetime access',
-                    style: GoogleFonts.dmSans(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                    ),
-                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : Text(
+                          '\$19.99 — One-time payment • Lifetime access',
+                          style: GoogleFonts.dmSans(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
                 ),
               ),
             ),
             const SizedBox(height: 10),
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: _isLoading ? null : () => Navigator.pop(context),
               child: Text(
                 'Stay in Chill Mode',
                 style: GoogleFonts.dmSans(
@@ -785,6 +822,83 @@ class _TopicLockedSheet extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BuildCustomMockBanner extends StatelessWidget {
+  const _BuildCustomMockBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      child: GestureDetector(
+        onTap: () => context.push(AppRoutes.customQuizBuilderScreen),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF00695C), Color(0xFF00897B)],
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+            ),
+            borderRadius: BorderRadius.circular(12.0),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF00695C).withAlpha(60),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withAlpha(38),
+                  borderRadius: BorderRadius.circular(8.0),
+                ),
+                child: const Icon(
+                  Icons.tune_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Build Custom Mock Test',
+                      style: GoogleFonts.dmSans(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                    Text(
+                      'Mix skills, pick subtopics & tune counts',
+                      style: GoogleFonts.dmSans(
+                        fontSize: 12,
+                        color: Colors.white.withAlpha(204),
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.arrow_forward_ios_rounded,
+                color: Colors.white,
+                size: 14,
+              ),
+            ],
+          ),
         ),
       ),
     );

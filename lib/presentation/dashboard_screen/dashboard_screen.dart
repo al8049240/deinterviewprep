@@ -73,7 +73,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final streak = _proService.dailyStreak;
     final mastered = _proService.cardsMastered;
     final isPro = _proService.isProUnlocked;
     final bookmarkProvider = context.watch<BookmarkProvider>();
@@ -195,13 +194,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           children: [
                             _StatBadge(
                               icon: '🔥',
-                              label: '$streak Day Streak',
-                              color: Colors.orange.shade100,
-                              textColor: Colors.orange.shade800,
-                            ),
-                            const SizedBox(width: 10),
-                            _StatBadge(
-                              icon: '🃏',
                               label: '$mastered Mastered',
                               color: AppTheme.primaryContainer,
                               textColor: AppTheme.primaryDark,
@@ -228,13 +220,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ],
 
                   // Performance Graph - removed, moved to Stats Hub
-                  // ── Bookmarks Hub Card ──────────────────────────────────────
-                  _BookmarksHubCard(bookmarkProvider: bookmarkProvider),
-                  const SizedBox(height: 20),
-
-                  // Quick Actions
+                  // ── Quick Actions ───────────────────────────────────────────
                   Text(
-                    'Quick Actions',
+                    '🛠️ Preparation Tools',
                     style: GoogleFonts.dmSans(
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
@@ -252,8 +240,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   const SizedBox(height: 10),
                   _QuickActionCard(
                     icon: Icons.quiz_rounded,
-                    title: 'Daily Practice Question',
-                    subtitle: 'Interview question bank',
+                    title: 'Real Case Scenario',
+                    subtitle: 'Real-world data engineering cases',
                     color: AppTheme.secondary,
                     onTap: () => context.push(AppRoutes.questionBankScreen),
                   ),
@@ -681,146 +669,6 @@ class _DevExperiencesBannerCard extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-// ── Bookmarks Hub Card ────────────────────────────────────────────────────────
-
-class _BookmarksHubCard extends StatelessWidget {
-  final BookmarkProvider bookmarkProvider;
-
-  const _BookmarksHubCard({required this.bookmarkProvider});
-
-  @override
-  Widget build(BuildContext context) {
-    final totalCount = bookmarkProvider.totalBookmarkCount;
-    final scenarioCount = bookmarkProvider.bookmarkedQuestionIds.length;
-    final quizCount = bookmarkProvider.bookmarkedQuizIds.length;
-    final flashcardCount = bookmarkProvider.bookmarkedFlashcardIds.length;
-    final codeTipCount = bookmarkProvider.bookmarkedPlaygroundIds.length;
-    final devExpCount = bookmarkProvider.bookmarkedDevExperienceIds.length;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Saved Items',
-          style: GoogleFonts.dmSans(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: const Color(0xFF1A1A1A),
-          ),
-        ),
-        const SizedBox(height: 10),
-        Material(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          elevation: 2,
-          shadowColor: Colors.black.withAlpha(15),
-          child: InkWell(
-            onTap: totalCount > 0
-                ? () => context.push(AppRoutes.bookmarksScreen)
-                : null,
-            borderRadius: BorderRadius.circular(16),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-              child: Row(
-                children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: AppTheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(
-                      Icons.bookmark_rounded,
-                      color: AppTheme.primary,
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: totalCount == 0
-                        ? Text(
-                            'No saved items yet. Tap 🔖 on any scenario or quiz to save it here.',
-                            style: GoogleFonts.dmSans(
-                              fontSize: 13,
-                              color: Colors.grey.shade600,
-                              height: 1.4,
-                            ),
-                          )
-                        : Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Saved Items / Bookmarks 🔖',
-                                style: GoogleFonts.dmSans(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w700,
-                                  color: const Color(0xFF1A1A1A),
-                                ),
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                _buildSubtitle(
-                                  totalCount,
-                                  scenarioCount,
-                                  quizCount,
-                                  flashcardCount,
-                                  codeTipCount,
-                                  devExpCount,
-                                ),
-                                style: GoogleFonts.dmSans(
-                                  fontSize: 12,
-                                  color: Colors.grey.shade600,
-                                  height: 1.4,
-                                ),
-                              ),
-                            ],
-                          ),
-                  ),
-                  if (totalCount > 0) ...[
-                    const SizedBox(width: 8),
-                    Icon(
-                      Icons.chevron_right,
-                      color: Colors.grey.shade400,
-                      size: 22,
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  String _buildSubtitle(
-    int total,
-    int scenarios,
-    int quizzes,
-    int flashcards,
-    int codeTips,
-    int devExps,
-  ) {
-    final parts = <String>[];
-    if (scenarios > 0) {
-      parts.add('$scenarios ${scenarios == 1 ? 'Scenario' : 'Scenarios'}');
-    }
-    if (quizzes > 0) parts.add('$quizzes ${quizzes == 1 ? 'Quiz' : 'Quizzes'}');
-    if (flashcards > 0) {
-      parts.add('$flashcards ${flashcards == 1 ? 'Flashcard' : 'Flashcards'}');
-    }
-    if (codeTips > 0) {
-      parts.add('$codeTips Code ${codeTips == 1 ? 'Tip' : 'Tips'}');
-    }
-    if (devExps > 0) {
-      parts.add('$devExps ${devExps == 1 ? 'Experience' : 'Experiences'}');
-    }
-    final breakdown = parts.isNotEmpty ? ' • ${parts.join(', ')}' : '';
-    return 'Total Bookmarks: $total$breakdown';
   }
 }
 

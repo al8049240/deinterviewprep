@@ -6,8 +6,14 @@ import '../topics_list_screen.dart';
 class TopicCardWidget extends StatelessWidget {
   final TopicModel topic;
   final VoidCallback onTap;
+  final bool isProUnlocked;
 
-  const TopicCardWidget({super.key, required this.topic, required this.onTap});
+  const TopicCardWidget({
+    super.key,
+    required this.topic,
+    required this.onTap,
+    this.isProUnlocked = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -197,9 +203,10 @@ class TopicCardWidget extends StatelessWidget {
   }
 
   Widget _buildTrailing() {
+    final bool locked = topic.isPro && !isProUnlocked;
     return Padding(
       padding: const EdgeInsets.only(left: 8),
-      child: topic.isPro
+      child: locked
           ? const Icon(Icons.lock_rounded, color: AppTheme.secondary, size: 20)
           : Icon(
               Icons.chevron_right_rounded,

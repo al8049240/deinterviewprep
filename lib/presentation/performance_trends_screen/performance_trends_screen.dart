@@ -3,8 +3,11 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../services/auth_service.dart';
 import '../../services/performance_service.dart';
 import '../../theme/app_theme.dart';
+import '../auth_screen/auth_screen.dart';
+import '../settings_screen/settings_screen.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Stats Hub Screen (redesigned Performance Trends)
@@ -192,77 +195,55 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
     });
   }
 
+  // ── Auth ───────────────────────────────────────────────────────────────────
+
+  Future<void> _openAuthScreen() async {
+    final result = await Navigator.of(
+      context,
+    ).push<bool>(MaterialPageRoute(builder: (_) => const AuthScreen()));
+    if (result == true && mounted) setState(() {});
+  }
+
+  Future<void> _signOut() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          'Sign Out',
+          style: GoogleFonts.dmSans(fontWeight: FontWeight.w700),
+        ),
+        content: Text(
+          'Are you sure you want to sign out?',
+          style: GoogleFonts.dmSans(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
+            child: const Text(
+              'Sign Out',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await AuthService.instance.signOut();
+      if (mounted) setState(() {});
+    }
+  }
+
   // ── Dialogs ────────────────────────────────────────────────────────────────
 
   void _showSettingsSheet(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE0E0E0),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              'Settings',
-              style: GoogleFonts.dmSans(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: const Color(0xFF1A1A1A),
-              ),
-            ),
-            const SizedBox(height: 16),
-            _SettingsTile(
-              icon: Icons.notifications_rounded,
-              title: 'Notifications',
-              subtitle: 'Manage reminders and alerts',
-              onTap: () {},
-            ),
-            _SettingsTile(
-              icon: Icons.dark_mode_rounded,
-              title: 'Appearance',
-              subtitle: 'Theme and display settings',
-              onTap: () {},
-            ),
-            _SettingsTile(
-              icon: Icons.privacy_tip_rounded,
-              title: 'Privacy',
-              subtitle: 'Data and privacy preferences',
-              onTap: () {},
-            ),
-            _SettingsTile(
-              icon: Icons.help_outline_rounded,
-              title: 'Help & Support',
-              subtitle: 'FAQs and contact us',
-              onTap: () {},
-            ),
-            _SettingsTile(
-              icon: Icons.info_outline_rounded,
-              title: 'About',
-              subtitle: 'App version and info',
-              onTap: () {},
-            ),
-          ],
-        ),
-      ),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
   }
 
   void _showXpDialog() {
@@ -312,6 +293,29 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
           ),
         ),
         actions: [
+          if (AuthService.instance.isSignedIn)
+            IconButton(
+              onPressed: _signOut,
+              icon: const Icon(Icons.logout_rounded, color: Colors.white),
+              tooltip: 'Sign Out',
+            )
+          else
+            TextButton.icon(
+              onPressed: _openAuthScreen,
+              icon: const Icon(
+                Icons.login_rounded,
+                color: Colors.white,
+                size: 18,
+              ),
+              label: Text(
+                'Sign In',
+                style: GoogleFonts.dmSans(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                ),
+              ),
+            ),
           IconButton(
             onPressed: () => _showSettingsSheet(context),
             icon: const Icon(Icons.settings_rounded, color: Colors.white),
@@ -326,23 +330,14 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // 1. Profile Header
-              _ProfileHeaderCard(),
-              const SizedBox(height: 16),
-
-              // 2. Quick Stats Row
-              _QuickStatsRow(
-                daysActive: _daysActive,
-                streak: _currentStreak,
-                totalXP: _totalXP,
-                dailyGoal: 50,
-              ),
+              _ProfileHeaderCard(onSignInTap: _openAuthScreen),
               const SizedBox(height: 20),
 
-              // 3. Statistics Section Title
+              // 2. Statistics Section Title
               _SectionTitle(title: 'Statistics', icon: Icons.bar_chart_rounded),
               const SizedBox(height: 12),
 
-              // 4. Stats Grid
+              // 3. Stats Grid
               _StatsGrid(
                 totalXP: _totalXP,
                 todayXP: _todayXP,
@@ -356,24 +351,20 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
               ),
               const SizedBox(height: 24),
 
-              // 5. Skill Badges
+              // 4. Skills Progress
               _SectionTitle(
-                title: 'Skill Medals',
+                title: 'Skills Progress',
                 icon: Icons.military_tech_rounded,
-                actionLabel: 'View All',
               ),
               const SizedBox(height: 12),
-              const _SkillBadgesRow(),
+              _SkillBadgesRow(topicAccuracy: _topicAccuracy),
               const SizedBox(height: 24),
 
-              // 6. Achievement Badges
-              _SectionTitle(
-                title: 'Achievements',
-                icon: Icons.emoji_events_rounded,
-                actionLabel: 'View All',
-              ),
+              // 5. My Attempts
+              _SectionTitle(title: 'My Attempts', icon: Icons.history_rounded),
               const SizedBox(height: 12),
-              const _AchievementBadgesRow(),
+              _MyAttemptsSection(sessions: _service.sessions),
+              const SizedBox(height: 24),
             ],
           ),
         ),
@@ -387,203 +378,138 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _ProfileHeaderCard extends StatelessWidget {
-  const _ProfileHeaderCard();
+  final VoidCallback onSignInTap;
+  const _ProfileHeaderCard({required this.onSignInTap});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(12),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          // Avatar
-          Container(
-            width: 64,
-            height: 64,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: const LinearGradient(
-                colors: [AppTheme.primary, AppTheme.primaryLight],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.primary.withAlpha(60),
-                  blurRadius: 8,
-                  offset: const Offset(0, 3),
-                ),
-              ],
+    final auth = AuthService.instance;
+    final isSignedIn = auth.isSignedIn;
+    final name = isSignedIn ? auth.displayName : 'Guest User';
+    final email = isSignedIn ? auth.email : 'Sign in to save your progress';
+    final avatarUrl = auth.avatarUrl;
+    final initials = name.isNotEmpty
+        ? name
+              .trim()
+              .split(' ')
+              .map((w) => w.isNotEmpty ? w[0] : '')
+              .take(2)
+              .join()
+              .toUpperCase()
+        : 'DE';
+
+    return GestureDetector(
+      onTap: isSignedIn ? null : onSignInTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withAlpha(12),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
             ),
-            child: const Center(
-              child: Text(
-                'DE',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 14),
-          // Name & email
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Data Engineer',
-                  style: GoogleFonts.dmSans(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFF1A1A1A),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'learner@deinterviewprep.com',
-                  style: GoogleFonts.dmSans(
-                    fontSize: 13,
-                    color: const Color(0xFF666666),
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-          const Icon(
-            Icons.chevron_right_rounded,
-            color: Color(0xFF999999),
-            size: 22,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Quick Stats Row
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _QuickStatsRow extends StatelessWidget {
-  final int daysActive;
-  final int streak;
-  final int totalXP;
-  final int dailyGoal;
-
-  const _QuickStatsRow({
-    required this.daysActive,
-    required this.streak,
-    required this.totalXP,
-    required this.dailyGoal,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(10),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _QuickStatItem(
-            icon: Icons.calendar_today_rounded,
-            iconColor: const Color(0xFF1565C0),
-            value: '$daysActive',
-            label: 'Days Active',
-          ),
-          _Divider(),
-          _QuickStatItem(
-            icon: Icons.local_fire_department_rounded,
-            iconColor: const Color(0xFFE65100),
-            value: '$streak',
-            label: 'Streak',
-          ),
-          _Divider(),
-          _QuickStatItem(
-            icon: Icons.bolt_rounded,
-            iconColor: const Color(0xFFF9A825),
-            value: '$totalXP',
-            label: 'Total XP',
-          ),
-          _Divider(),
-          _QuickStatItem(
-            icon: Icons.alarm_rounded,
-            iconColor: AppTheme.primary,
-            value: '$dailyGoal',
-            label: 'Daily Goal',
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Divider extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(width: 1, height: 36, color: const Color(0xFFEEEEEE));
-  }
-}
-
-class _QuickStatItem extends StatelessWidget {
-  final IconData icon;
-  final Color iconColor;
-  final String value;
-  final String label;
-
-  const _QuickStatItem({
-    required this.icon,
-    required this.iconColor,
-    required this.value,
-    required this.label,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, color: iconColor, size: 22),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: GoogleFonts.dmSans(
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
-            color: const Color(0xFF1A1A1A),
-          ),
+          ],
         ),
-        Text(
-          label,
-          style: GoogleFonts.dmSans(
-            fontSize: 10,
-            color: const Color(0xFF888888),
-          ),
+        child: Row(
+          children: [
+            // Avatar
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  colors: [AppTheme.primary, AppTheme.primaryLight],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.primary.withAlpha(60),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: avatarUrl != null && avatarUrl.isNotEmpty
+                  ? ClipOval(
+                      child: Image.network(
+                        avatarUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Center(
+                          child: Text(
+                            initials,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                  : Center(
+                      child: Text(
+                        initials,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+            ),
+            const SizedBox(width: 14),
+            // Name & email
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    style: GoogleFonts.dmSans(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF1A1A1A),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    email,
+                    style: GoogleFonts.dmSans(
+                      fontSize: 13,
+                      color: const Color(0xFF666666),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (!isSignedIn) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Tap to sign in →',
+                      style: GoogleFonts.dmSans(
+                        fontSize: 12,
+                        color: AppTheme.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            Icon(
+              isSignedIn
+                  ? Icons.verified_user_rounded
+                  : Icons.chevron_right_rounded,
+              color: isSignedIn ? AppTheme.primary : const Color(0xFF999999),
+              size: 22,
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
@@ -1214,7 +1140,9 @@ class _TopicAccuracyDialogState extends State<_TopicAccuracyDialog> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _SkillBadgesRow extends StatelessWidget {
-  const _SkillBadgesRow();
+  final Map<String, double> topicAccuracy;
+
+  const _SkillBadgesRow({required this.topicAccuracy});
 
   static const _skills = [
     _SkillData(
@@ -1257,14 +1185,17 @@ class _SkillBadgesRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 120,
+      height: 130,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: _skills.length,
         separatorBuilder: (_, __) => const SizedBox(width: 12),
         itemBuilder: (context, i) {
           final skill = _skills[i];
-          return _SkillBadgeCard(skill: skill);
+          // Check mastery: accuracy >= 80% for this skill topic
+          final accuracy = topicAccuracy[skill.name];
+          final isMastered = accuracy != null && accuracy >= 80.0;
+          return _SkillBadgeCard(skill: skill, isMastered: isMastered);
         },
       ),
     );
@@ -1289,8 +1220,9 @@ class _SkillData {
 
 class _SkillBadgeCard extends StatelessWidget {
   final _SkillData skill;
+  final bool isMastered;
 
-  const _SkillBadgeCard({required this.skill});
+  const _SkillBadgeCard({required this.skill, required this.isMastered});
 
   @override
   Widget build(BuildContext context) {
@@ -1300,151 +1232,9 @@ class _SkillBadgeCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(10),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: skill.bgColor,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(skill.icon, color: skill.color, size: 22),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            skill.name,
-            style: GoogleFonts.dmSans(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: const Color(0xFF1A1A1A),
-            ),
-          ),
-          const SizedBox(height: 5),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(3),
-            child: LinearProgressIndicator(
-              value: skill.progress,
-              minHeight: 4,
-              backgroundColor: const Color(0xFFEEEEEE),
-              valueColor: AlwaysStoppedAnimation<Color>(skill.color),
-            ),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            '${(skill.progress * 100).toInt()}%',
-            style: GoogleFonts.dmSans(
-              fontSize: 9,
-              color: skill.color,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Achievement Badges Row
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _AchievementBadgesRow extends StatelessWidget {
-  const _AchievementBadgesRow();
-
-  static const _achievements = [
-    _AchievementData(
-      'Streak Master',
-      3,
-      Icons.local_fire_department_rounded,
-      Color(0xFFE65100),
-      Color(0xFFFFF3E0),
-    ),
-    _AchievementData(
-      'Speed Runner',
-      2,
-      Icons.speed_rounded,
-      Color(0xFF1565C0),
-      Color(0xFFE3F2FD),
-    ),
-    _AchievementData(
-      'Perfect Score',
-      4,
-      Icons.star_rounded,
-      Color(0xFFF9A825),
-      Color(0xFFFFF8E1),
-    ),
-    _AchievementData(
-      'Topic Master',
-      1,
-      Icons.military_tech_rounded,
-      Color(0xFF6A1B9A),
-      Color(0xFFF3E5F5),
-    ),
-    _AchievementData(
-      'Night Owl',
-      2,
-      Icons.nightlight_round,
-      Color(0xFF00695C),
-      Color(0xFFE0F2F1),
-    ),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 130,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: _achievements.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 12),
-        itemBuilder: (context, i) {
-          final a = _achievements[i];
-          return _AchievementCard(achievement: a);
-        },
-      ),
-    );
-  }
-}
-
-class _AchievementData {
-  final String name;
-  final int level;
-  final IconData icon;
-  final Color color;
-  final Color bgColor;
-
-  const _AchievementData(
-    this.name,
-    this.level,
-    this.icon,
-    this.color,
-    this.bgColor,
-  );
-}
-
-class _AchievementCard extends StatelessWidget {
-  final _AchievementData achievement;
-
-  const _AchievementCard({required this.achievement});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 100,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        border: isMastered
+            ? Border.all(color: const Color(0xFFF9A825), width: 1.5)
+            : null,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withAlpha(10),
@@ -1457,50 +1247,88 @@ class _AchievementCard extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Stack(
-            alignment: Alignment.bottomRight,
+            clipBehavior: Clip.none,
             children: [
               Container(
-                width: 48,
-                height: 48,
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
-                  color: achievement.bgColor,
-                  shape: BoxShape.circle,
+                  color: skill.bgColor,
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(
-                  achievement.icon,
-                  color: achievement.color,
-                  size: 24,
-                ),
+                child: Icon(skill.icon, color: skill.color, size: 22),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                decoration: BoxDecoration(
-                  color: achievement.color,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  'Lv.${achievement.level}',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 8,
-                    fontWeight: FontWeight.w700,
+              if (isMastered)
+                Positioned(
+                  top: -8,
+                  right: -8,
+                  child: Container(
+                    width: 22,
+                    height: 22,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFF9A825),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Center(
+                      child: Text('🥋', style: TextStyle(fontSize: 12)),
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
           const SizedBox(height: 8),
           Text(
-            achievement.name,
+            skill.name,
             style: GoogleFonts.dmSans(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
               color: const Color(0xFF1A1A1A),
             ),
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
           ),
+          const SizedBox(height: 4),
+          if (isMastered)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF8E1),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('🔥', style: TextStyle(fontSize: 8)),
+                  const SizedBox(width: 2),
+                  Text(
+                    'Mastered',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 8,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFFF9A825),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(3),
+              child: LinearProgressIndicator(
+                value: skill.progress,
+                minHeight: 4,
+                backgroundColor: const Color(0xFFEEEEEE),
+                valueColor: AlwaysStoppedAnimation<Color>(skill.color),
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              '${(skill.progress * 100).toInt()}%',
+              style: GoogleFonts.dmSans(
+                fontSize: 9,
+                color: skill.color,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1547,53 +1375,176 @@ class _ToggleChip extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Settings Tile
+// My Attempts Section
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _SettingsTile extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
+class _MyAttemptsSection extends StatelessWidget {
+  final List<QuizSession> sessions;
 
-  const _SettingsTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
+  const _MyAttemptsSection({required this.sessions});
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-      leading: Container(
-        width: 40,
-        height: 40,
+    if (sessions.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: AppTheme.primaryContainer,
-          borderRadius: BorderRadius.circular(10),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withAlpha(10),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
-        child: Icon(icon, color: AppTheme.primary, size: 20),
-      ),
-      title: Text(
-        title,
-        style: GoogleFonts.dmSans(
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-          color: const Color(0xFF1A1A1A),
+        child: Center(
+          child: Column(
+            children: [
+              Icon(
+                Icons.history_rounded,
+                size: 36,
+                color: Colors.grey.shade300,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'No attempts yet',
+                style: GoogleFonts.dmSans(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade500,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Complete a quiz to see your history here',
+                style: GoogleFonts.dmSans(
+                  fontSize: 12,
+                  color: Colors.grey.shade400,
+                ),
+              ),
+            ],
+          ),
         ),
+      );
+    }
+
+    final recent = sessions.reversed.take(10).toList();
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(10),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
-      subtitle: Text(
-        subtitle,
-        style: GoogleFonts.dmSans(fontSize: 12, color: const Color(0xFF888888)),
+      child: Column(
+        children: recent.asMap().entries.map((entry) {
+          final i = entry.key;
+          final session = entry.value;
+          final isLast = i == recent.length - 1;
+          final accuracy = session.totalQuestions > 0
+              ? (session.correctAnswers / session.totalQuestions * 100)
+              : 0.0;
+          final accuracyColor = accuracy >= 70
+              ? const Color(0xFF2E7D32)
+              : accuracy >= 50
+              ? const Color(0xFFE65100)
+              : const Color(0xFFC62828);
+
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryContainer,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.quiz_rounded,
+                        color: AppTheme.primary,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            session.topicName,
+                            style: GoogleFonts.dmSans(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF1A1A1A),
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _formatDate(session.timestamp),
+                            style: GoogleFonts.dmSans(
+                              fontSize: 11,
+                              color: Colors.grey.shade500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          '${accuracy.toStringAsFixed(0)}%',
+                          style: GoogleFonts.dmSans(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: accuracyColor,
+                          ),
+                        ),
+                        Text(
+                          '${session.correctAnswers}/${session.totalQuestions}',
+                          style: GoogleFonts.dmSans(
+                            fontSize: 11,
+                            color: Colors.grey.shade500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              if (!isLast)
+                Divider(height: 1, indent: 68, color: Colors.grey.shade100),
+            ],
+          );
+        }).toList(),
       ),
-      trailing: const Icon(
-        Icons.chevron_right_rounded,
-        color: Color(0xFFBBBBBB),
-        size: 20,
-      ),
-      onTap: onTap,
     );
   }
+
+  String _formatDate(DateTime dt) {
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    if (diff.inDays == 0) return 'Today';
+    if (diff.inDays == 1) return 'Yesterday';
+    if (diff.inDays < 7) return '${diff.inDays} days ago';
+    return '${dt.day}/${dt.month}/${dt.year}';
+  }
 }
+
+// end of file

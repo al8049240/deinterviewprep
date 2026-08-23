@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../theme/app_theme.dart';
 import '../../services/pro_service.dart';
+import '../../services/supabase_service.dart';
 import '../../providers/bookmark_provider.dart';
 import '../bookmarks_screen/bookmarks_screen.dart';
 import '../paywall_screen/paywall_screen.dart';
@@ -22,6 +23,63 @@ class _PlaygroundItem {
     required this.codeSnippet,
     required this.language,
   });
+}
+
+// ── Challenge model (from Supabase normalized schema) ─────────────────────────
+class _Challenge {
+  final String playgroundId;
+  final String title;
+  final String description;
+  final String language;
+  final String difficulty;
+  final String starterCode;
+  final String tips;
+  final String? datasetId;
+  final String? datasetName;
+  // Only populated in workspace view
+  final List<Map<String, dynamic>>? datasetRows;
+
+  const _Challenge({
+    required this.playgroundId,
+    required this.title,
+    required this.description,
+    required this.language,
+    required this.difficulty,
+    required this.starterCode,
+    required this.tips,
+    this.datasetId,
+    this.datasetName,
+    this.datasetRows,
+  });
+
+  factory _Challenge.fromMap(Map<String, dynamic> map) {
+    final dsMap = map['code_playground_datasets'];
+    String? dsId;
+    String? dsName;
+    List<Map<String, dynamic>>? dsRows;
+
+    if (dsMap is Map<String, dynamic>) {
+      dsId = dsMap['dataset_id']?.toString();
+      dsName = dsMap['dataset_name']?.toString();
+      final raw = dsMap['dataset'];
+      if (raw is List) {
+        dsRows = raw.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      }
+    }
+
+    return _Challenge(
+      playgroundId: map['playground_id']?.toString() ?? '',
+      title: map['title']?.toString() ?? '',
+      description: map['description']?.toString() ?? '',
+      language: map['language']?.toString() ?? 'SQL',
+      difficulty: map['difficulty']?.toString() ?? '',
+      starterCode: map['starter_code']?.toString() ?? '',
+      tips: map['tips']?.toString() ?? '',
+      datasetId: dsId,
+      datasetName: dsName,
+      datasetRows: dsRows,
+    );
+  }
 }
 
 const List<_PlaygroundItem> _sqlTips = [
@@ -104,7 +162,15 @@ class _CodePlaygroundScreenState extends State<CodePlaygroundScreen>
   String _pythonOutput = '';
   bool _isRunning = false;
   String _activeTab = 'SQL';
-  String? _loadedTipId; // tracks which tip is currently loaded in the editor
+  String? _loadedTipId;
+
+  // ── Challenges state ──────────────────────────────────────────────────────
+  bool _challengesLoading = true;
+  String? _challengesError;
+  List<_Challenge> _challenges = [];
+  _Challenge? _activeChallenge; // null = list view, non-null = workspace view
+  bool _workspaceLoading = false;
+  bool _showDatasetPreview = false;
 
   static const String _defaultSql = '''-- Sample: Query top customers by revenue
 SELECT 
@@ -158,19 +224,87 @@ for customer, revenue in sorted_result:
       });
     });
 
-    // If opened from a bookmark, switch to the correct tab and load the tip's code
     if (widget.initialTipId != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _loadInitialTip();
       });
     }
+
+    _fetchChallenges();
+  }
+
+  Future<void> _fetchChallenges() async {
+    setState(() {
+      _challengesLoading = true;
+      _challengesError = null;
+    });
+    try {
+      final raw = await SupabaseService.instance.fetchPlaygroundChallenges();
+      final challenges = raw.map((m) => _Challenge.fromMap(m)).toList();
+      setState(() {
+        _challenges = challenges;
+        _challengesLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _challengesError = 'Failed to load challenges. Tap to retry.';
+        _challengesLoading = false;
+      });
+    }
+  }
+
+  Future<void> _openChallenge(_Challenge listChallenge) async {
+    setState(() {
+      _workspaceLoading = true;
+      _activeChallenge = listChallenge;
+      _showDatasetPreview = false;
+    });
+    final full = await SupabaseService.instance.fetchPlaygroundChallengeById(
+      listChallenge.playgroundId,
+    );
+    if (!mounted) return;
+    if (full != null) {
+      final fullChallenge = _Challenge.fromMap(full);
+      // Load starter code into the correct editor
+      if (fullChallenge.language.toLowerCase() == 'python') {
+        _tabController.animateTo(1);
+        _pythonController.text = fullChallenge.starterCode.isNotEmpty
+            ? fullChallenge.starterCode
+            : _defaultPython;
+        setState(() => _activeTab = 'Python');
+      } else {
+        _tabController.animateTo(0);
+        _sqlController.text = fullChallenge.starterCode.isNotEmpty
+            ? fullChallenge.starterCode
+            : _defaultSql;
+        setState(() => _activeTab = 'SQL');
+      }
+      setState(() {
+        _activeChallenge = fullChallenge;
+        _workspaceLoading = false;
+      });
+    } else {
+      setState(() {
+        _workspaceLoading = false;
+      });
+    }
+  }
+
+  void _closeWorkspace() {
+    setState(() {
+      _activeChallenge = null;
+      _showDatasetPreview = false;
+      _sqlController.text = _defaultSql;
+      _pythonController.text = _defaultPython;
+      _sqlOutput = '';
+      _pythonOutput = '';
+    });
   }
 
   void _loadInitialTip() {
     final tipId = widget.initialTipId;
     if (tipId == null) return;
 
-    // Find the tip in SQL or Python lists
     final sqlMatch = _sqlTips.where((t) => t.id == tipId).toList();
     final pyMatch = _pythonTips.where((t) => t.id == tipId).toList();
 
@@ -225,7 +359,6 @@ for customer, revenue in sorted_result:
       return 'ERROR: No SQL query to execute. Please write a query first.';
     }
 
-    // DDL statements
     if (ql.startsWith('create table') || ql.startsWith('create index')) {
       final nameMatch = RegExp(
         r'create\s+(?:table|index)\s+(\w+)',
@@ -240,8 +373,6 @@ for customer, revenue in sorted_result:
     if (ql.startsWith('alter')) {
       return 'DDL executed successfully ✓ (0.006s)\n\nTable altered successfully.';
     }
-
-    // DML statements
     if (ql.startsWith('insert')) {
       return 'Query OK, 1 row affected (0.012s)';
     }
@@ -252,9 +383,7 @@ for customer, revenue in sorted_result:
       return 'Query OK, rows deleted (0.010s)';
     }
 
-    // SELECT queries — parse what columns/tables are referenced
     if (ql.contains('select') && ql.contains('from')) {
-      // Detect window functions
       if (ql.contains('over') &&
           (ql.contains('sum(') ||
               ql.contains('row_number') ||
@@ -262,23 +391,18 @@ for customer, revenue in sorted_result:
               ql.contains('count('))) {
         return _buildWindowFunctionResult(q);
       }
-      // Detect CTEs
       if (ql.startsWith('with ') || ql.contains('\nwith ')) {
         return _buildCteResult(q);
       }
-      // Detect GROUP BY aggregation
       if (ql.contains('group by')) {
         return _buildGroupByResult(q);
       }
-      // Detect JOIN
       if (ql.contains('join')) {
         return _buildJoinResult(q);
       }
-      // Detect LATERAL
       if (ql.contains('lateral')) {
         return _buildLateralResult(q);
       }
-      // Generic SELECT
       return _buildGenericSelectResult(q);
     }
 
@@ -346,12 +470,6 @@ CTE resolved successfully.
     final ql = q.toLowerCase();
     final hasSum = ql.contains('sum(');
     final hasCount = ql.contains('count(');
-    final hasAvg = ql.contains('avg(');
-
-    String header = '┌─────────────┬──────────────';
-    String divider = '├─────────────┼──────────────';
-    String footer = '└─────────────┴──────────────';
-    String col2 = 'group_key    ';
 
     if (hasSum && hasCount) {
       return '''Query executed successfully ✓
@@ -436,8 +554,6 @@ LATERAL subquery evaluated per row.
   }
 
   String _buildGenericSelectResult(String q) {
-    final ql = q.toLowerCase();
-    // Try to detect LIMIT clause
     final limitMatch = RegExp(
       r'limit\s+(\d+)',
       caseSensitive: false,
@@ -467,14 +583,11 @@ $displayRows rows in set''';
     final lines = code.split('\n');
     final output = <String>[];
 
-    // Simulate print statements
     for (final line in lines) {
       final trimmed = line.trim();
-      // Match print("...") or print(f"...") or print(variable)
       final printMatch = RegExp(r'''print\\((.+)\\)''').firstMatch(trimmed);
       if (printMatch != null) {
         final arg = printMatch.group(1)!.trim();
-        // f-string with customer/revenue pattern
         if (arg.contains('customer') && arg.contains('revenue')) {
           output.addAll([
             'Alice: \$570.00',
@@ -482,13 +595,11 @@ $displayRows rows in set''';
             'Charlie: \$95.00',
           ]);
         } else if (arg.contains('f"') || arg.contains("f'")) {
-          // Generic f-string — extract literal parts
           final literal = arg
               .replaceAll(RegExp(r'\{[^}]+\}'), '<value>')
               .replaceAll(RegExp(r'''[f"']'''), '');
           output.add(literal.isNotEmpty ? literal : '<computed value>');
         } else if (arg.startsWith('"') || arg.startsWith("'")) {
-          // String literal
           output.add(arg.replaceAll(RegExp(r'''^['"]|['"]$'''), ''));
         } else {
           output.add('<$arg>');
@@ -496,7 +607,6 @@ $displayRows rows in set''';
       }
     }
 
-    // Detect PySpark patterns
     if (code.contains('pyspark') ||
         code.contains('SparkSession') ||
         code.contains('groupBy') ||
@@ -515,7 +625,6 @@ $displayRows rows in set''';
 Process finished with exit code 0''';
     }
 
-    // Detect pandas patterns
     if (code.contains('pandas') ||
         code.contains('pd.') ||
         code.contains('DataFrame') ||
@@ -534,7 +643,6 @@ Shape: (4, 4)
 Process finished with exit code 0''';
     }
 
-    // Detect list comprehension / filter patterns
     if (code.contains('[') && code.contains('for') && code.contains('if')) {
       return '''Execution successful ✓ (0.002s)
 
@@ -543,14 +651,12 @@ Process finished with exit code 0''';
 Process finished with exit code 0''';
     }
 
-    // Detect sorting / dict patterns
     if (code.contains('sorted(') || code.contains('.items()')) {
       if (output.isEmpty) {
         output.addAll(['Alice: \$570.00', 'Bob: \$590.50', 'Charlie: \$95.00']);
       }
     }
 
-    // Detect json patterns
     if (code.contains('json.') || code.contains('import json')) {
       if (output.isEmpty) {
         output.add('{"status": "ok", "count": 3, "data": [...]}');
@@ -676,7 +782,6 @@ Process finished with exit code 0''';
     }
 
     final output = _activeTab == 'SQL' ? _sqlOutput : _pythonOutput;
-    // When opened from a bookmark, show only the specific tip; otherwise show all
     final allTips = _activeTab == 'SQL' ? _sqlTips : _pythonTips;
     final tips = widget.initialTipId != null
         ? allTips.where((t) => t.id == widget.initialTipId).toList()
@@ -688,300 +793,887 @@ Process finished with exit code 0''';
           backgroundColor: AppTheme.backgroundLight,
           appBar: AppBar(
             title: Text(
-              widget.initialTipId != null
+              _activeChallenge != null
+                  ? _activeChallenge!.title
+                  : widget.initialTipId != null
                   ? 'Bookmarked Code Tip'
                   : 'Code Playground',
               style: GoogleFonts.dmSans(
                 fontWeight: FontWeight.w700,
                 color: Colors.white,
               ),
+              overflow: TextOverflow.ellipsis,
             ),
             backgroundColor: AppTheme.primary,
             iconTheme: const IconThemeData(color: Colors.white),
-            bottom: TabBar(
-              controller: _tabController,
-              indicatorColor: AppTheme.secondary,
-              labelColor: Colors.white,
-              unselectedLabelColor: Colors.white70,
-              labelStyle: GoogleFonts.dmSans(
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-              ),
-              tabs: const [
-                Tab(text: '🗄️ SQL'),
-                Tab(text: '🐍 Python'),
-              ],
-            ),
+            leading: _activeChallenge != null
+                ? IconButton(
+                    icon: const Icon(Icons.arrow_back, color: Colors.white),
+                    onPressed: _closeWorkspace,
+                  )
+                : null,
+            bottom: _activeChallenge == null
+                ? TabBar(
+                    controller: _tabController,
+                    indicatorColor: AppTheme.secondary,
+                    labelColor: Colors.white,
+                    unselectedLabelColor: Colors.white70,
+                    labelStyle: GoogleFonts.dmSans(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                    tabs: const [
+                      Tab(text: '🗄️ SQL'),
+                      Tab(text: '🐍 Python'),
+                    ],
+                  )
+                : null,
             actions: [
-              IconButton(
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const BookmarksScreen(
-                      initialFilter: BookmarkFilter.playground,
+              if (_activeChallenge == null)
+                GestureDetector(
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const BookmarksScreen(
+                        initialFilter: BookmarkFilter.playground,
+                      ),
                     ),
                   ),
-                ),
-                icon: const Icon(Icons.bookmark_rounded, color: Colors.white),
-                tooltip: 'View Bookmarks',
-              ),
-            ],
-          ),
-          body: Column(
-            children: [
-              // Mock dataset info
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                color: AppTheme.primaryContainer,
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.table_chart,
-                      size: 14,
-                      color: AppTheme.primaryDark,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Mock dataset: orders, customers, products tables pre-loaded',
-                      style: GoogleFonts.dmSans(
-                        fontSize: 12,
-                        color: AppTheme.primaryDark,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              // Code editor
-              Expanded(
-                flex: 3,
-                child: TabBarView(
-                  controller: _tabController,
-                  children: [
-                    _CodeEditor(
-                      controller: _sqlController,
-                      language: 'SQL',
-                      hint: 'Write your SQL query here...',
-                    ),
-                    _CodeEditor(
-                      controller: _pythonController,
-                      language: 'Python',
-                      hint: 'Write your Python code here...',
-                    ),
-                  ],
-                ),
-              ),
-
-              // Run button
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 10,
-                ),
-                color: Colors.white,
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: _isRunning ? null : _runCode,
-                        icon: _isRunning
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  color: Colors.white,
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.play_arrow, size: 20),
-                        label: Text(
-                          _isRunning ? 'Running...' : 'Run $_activeTab',
-                          style: GoogleFonts.dmSans(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 15,
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primary,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    OutlinedButton(
-                      onPressed: () {
-                        if (_activeTab == 'SQL') {
-                          _sqlController.text = _defaultSql;
-                          setState(() => _sqlOutput = '');
-                        } else {
-                          _pythonController.text = _defaultPython;
-                          setState(() => _pythonOutput = '');
-                        }
-                      },
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 12,
-                          horizontal: 16,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                      child: Text(
-                        'Reset',
-                        style: GoogleFonts.dmSans(fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              // Output panel
-              if (output.isNotEmpty)
-                Expanded(
-                  flex: 2,
                   child: Container(
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1E1E1E),
-                      border: Border(
-                        top: BorderSide(color: Colors.grey.shade800),
-                      ),
+                    margin: const EdgeInsets.only(right: 12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withAlpha(38),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 8,
-                          ),
-                          color: const Color(0xFF2D2D2D),
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.terminal,
-                                size: 14,
-                                color: Colors.green,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                'Output',
-                                style: GoogleFonts.dmSans(
-                                  fontSize: 12,
-                                  color: Colors.green,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
+                        const Icon(
+                          Icons.bookmark_rounded,
+                          color: Colors.white,
+                          size: 18,
                         ),
-                        Expanded(
-                          child: SingleChildScrollView(
-                            padding: const EdgeInsets.all(14),
-                            child: Text(
-                              output,
-                              style: GoogleFonts.sourceCodePro(
-                                fontSize: 12,
-                                color: const Color(0xFFD4D4D4),
-                                height: 1.6,
-                              ),
-                            ),
+                        const SizedBox(width: 5),
+                        Text(
+                          '${bookmarkProvider.bookmarkedPlaygroundIds.length} saved',
+                          style: GoogleFonts.dmSans(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
                           ),
                         ),
                       ],
                     ),
                   ),
                 ),
+            ],
+          ),
+          body: _activeChallenge != null
+              ? _buildWorkspaceView(output)
+              : _buildMainView(bookmarkProvider, tips, output),
+        );
+      },
+    );
+  }
 
-              // Tips & Challenges section — vertical scrollable list
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                color: Colors.white,
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.lightbulb_outline,
-                      size: 16,
-                      color: Color(0xFF2E7D32),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      '$_activeTab Tips & Challenges',
-                      style: GoogleFonts.dmSans(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: const Color(0xFF1A1A1A),
-                      ),
-                    ),
+  // ── Workspace View (challenge detail + dataset preview) ───────────────────
+  Widget _buildWorkspaceView(String output) {
+    if (_workspaceLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    final challenge = _activeChallenge!;
+    final hasDataset =
+        challenge.datasetRows != null && challenge.datasetRows!.isNotEmpty;
+
+    return Column(
+      children: [
+        // Challenge info banner
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          color: AppTheme.primaryContainer,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  _DifficultyBadge(difficulty: challenge.difficulty),
+                  const SizedBox(width: 8),
+                  _LanguageBadge(language: challenge.language),
+                  if (challenge.datasetName != null) ...[
+                    const SizedBox(width: 8),
+                    _DatasetBadge(datasetName: challenge.datasetName!),
                   ],
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                challenge.description,
+                style: GoogleFonts.dmSans(
+                  fontSize: 12,
+                  color: AppTheme.primaryDark,
+                  height: 1.4,
+                ),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (challenge.tips.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  '💡 ${challenge.tips}',
+                  style: GoogleFonts.dmSans(
+                    fontSize: 11,
+                    color: AppTheme.primaryDark.withAlpha(180),
+                    fontStyle: FontStyle.italic,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ],
+          ),
+        ),
+
+        // Dataset preview toggle
+        if (hasDataset)
+          InkWell(
+            onTap: () =>
+                setState(() => _showDatasetPreview = !_showDatasetPreview),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              color: const Color(0xFF263238),
+              child: Row(
+                children: [
+                  const Icon(Icons.table_chart, size: 14, color: Colors.teal),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Dataset: ${challenge.datasetName ?? "Preview"} (${challenge.datasetRows!.length} rows)',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 12,
+                      color: Colors.teal,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const Spacer(),
+                  Icon(
+                    _showDatasetPreview ? Icons.expand_less : Icons.expand_more,
+                    size: 16,
+                    color: Colors.teal,
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+        // Dataset rows preview panel
+        if (hasDataset && _showDatasetPreview)
+          _DatasetPreviewPanel(rows: challenge.datasetRows!),
+
+        // Code editor
+        Expanded(
+          flex: 3,
+          child: TabBarView(
+            controller: _tabController,
+            children: [
+              _CodeEditor(
+                controller: _sqlController,
+                language: 'SQL',
+                hint: 'Write your SQL query here...',
+              ),
+              _CodeEditor(
+                controller: _pythonController,
+                language: 'Python',
+                hint: 'Write your Python code here...',
+              ),
+            ],
+          ),
+        ),
+
+        // Run / Reset buttons
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          color: Colors.white,
+          child: Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _isRunning ? null : _runCode,
+                  icon: _isRunning
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Icon(Icons.play_arrow, size: 20),
+                  label: Text(
+                    _isRunning ? 'Running...' : 'Run ${challenge.language}',
+                    style: GoogleFonts.dmSans(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
                 ),
               ),
-              Expanded(
-                flex: 2,
-                child: ListView.builder(
-                  controller: _tipsScrollController,
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                  itemCount: tips.length,
-                  itemBuilder: (context, i) {
-                    final tip = tips[i];
-                    final isBookmarked = bookmarkProvider
-                        .isPlaygroundBookmarked(tip.id);
-                    final isHighlighted =
-                        widget.initialTipId == tip.id || _loadedTipId == tip.id;
-                    return _TipCard(
-                      tip: tip,
-                      isBookmarked: isBookmarked,
-                      isHighlighted: isHighlighted,
-                      onBookmark: () =>
-                          _togglePlaygroundBookmark(tip.id, tip.title),
-                      onTap: () {
-                        final currentTab = _activeTab;
-                        if (currentTab == 'SQL') {
-                          _sqlController.text = tip.codeSnippet;
-                        } else {
-                          _pythonController.text = tip.codeSnippet;
-                        }
-                        setState(() {
-                          _loadedTipId = tip.id;
-                        });
-                        ScaffoldMessenger.of(context).clearSnackBars();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              '✓ "${tip.title}" loaded into editor',
-                              style: GoogleFonts.dmSans(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            backgroundColor: const Color(0xFF2E7D32),
-                            behavior: SnackBarBehavior.floating,
-                            duration: const Duration(seconds: 2),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                          ),
-                        );
-                      },
-                    );
-                  },
+              const SizedBox(width: 10),
+              OutlinedButton(
+                onPressed: () {
+                  if (challenge.language.toLowerCase() == 'python') {
+                    _pythonController.text = challenge.starterCode.isNotEmpty
+                        ? challenge.starterCode
+                        : _defaultPython;
+                    setState(() => _pythonOutput = '');
+                  } else {
+                    _sqlController.text = challenge.starterCode.isNotEmpty
+                        ? challenge.starterCode
+                        : _defaultSql;
+                    setState(() => _sqlOutput = '');
+                  }
+                },
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 12,
+                    horizontal: 16,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                child: Text(
+                  'Reset',
+                  style: GoogleFonts.dmSans(fontWeight: FontWeight.w600),
                 ),
               ),
             ],
           ),
-        );
-      },
+        ),
+
+        // Output panel
+        if (output.isNotEmpty)
+          Expanded(flex: 2, child: _OutputPanel(output: output)),
+      ],
+    );
+  }
+
+  // ── Main View (editor + tips + challenge list) ────────────────────────────
+  Widget _buildMainView(
+    BookmarkProvider bookmarkProvider,
+    List<_PlaygroundItem> tips,
+    String output,
+  ) {
+    return Column(
+      children: [
+        // Dataset info bar
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          color: AppTheme.primaryContainer,
+          child: Row(
+            children: [
+              const Icon(
+                Icons.table_chart,
+                size: 14,
+                color: AppTheme.primaryDark,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Mock dataset: orders, customers, products tables pre-loaded',
+                style: GoogleFonts.dmSans(
+                  fontSize: 12,
+                  color: AppTheme.primaryDark,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // Code editor
+        Expanded(
+          flex: 3,
+          child: TabBarView(
+            controller: _tabController,
+            children: [
+              _CodeEditor(
+                controller: _sqlController,
+                language: 'SQL',
+                hint: 'Write your SQL query here...',
+              ),
+              _CodeEditor(
+                controller: _pythonController,
+                language: 'Python',
+                hint: 'Write your Python code here...',
+              ),
+            ],
+          ),
+        ),
+
+        // Run / Reset buttons
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          color: Colors.white,
+          child: Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _isRunning ? null : _runCode,
+                  icon: _isRunning
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Icon(Icons.play_arrow, size: 20),
+                  label: Text(
+                    _isRunning ? 'Running...' : 'Run $_activeTab',
+                    style: GoogleFonts.dmSans(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              OutlinedButton(
+                onPressed: () {
+                  if (_activeTab == 'SQL') {
+                    _sqlController.text = _defaultSql;
+                    setState(() => _sqlOutput = '');
+                  } else {
+                    _pythonController.text = _defaultPython;
+                    setState(() => _pythonOutput = '');
+                  }
+                },
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 12,
+                    horizontal: 16,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                child: Text(
+                  'Reset',
+                  style: GoogleFonts.dmSans(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // Output panel
+        if (output.isNotEmpty)
+          Expanded(flex: 2, child: _OutputPanel(output: output)),
+
+        // Challenges section header
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          color: Colors.white,
+          child: Row(
+            children: [
+              const Icon(Icons.code, size: 16, color: Color(0xFF1565C0)),
+              const SizedBox(width: 6),
+              Text(
+                'Challenges',
+                style: GoogleFonts.dmSans(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF1A1A1A),
+                ),
+              ),
+              const Spacer(),
+              if (!_challengesLoading && _challengesError == null)
+                Text(
+                  '${_challenges.length} available',
+                  style: GoogleFonts.dmSans(
+                    fontSize: 11,
+                    color: Colors.grey.shade500,
+                  ),
+                ),
+            ],
+          ),
+        ),
+
+        // Challenges list
+        Expanded(
+          flex: 2,
+          child: _challengesLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _challengesError != null
+              ? Center(
+                  child: GestureDetector(
+                    onTap: _fetchChallenges,
+                    child: Text(
+                      _challengesError!,
+                      style: GoogleFonts.dmSans(
+                        fontSize: 13,
+                        color: Colors.red.shade400,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                )
+              : _challenges.isEmpty
+              ? Center(
+                  child: Text(
+                    'No challenges found.',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 13,
+                      color: Colors.grey.shade500,
+                    ),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                  itemCount: _challenges.length,
+                  itemBuilder: (context, i) {
+                    return _ChallengeCard(
+                      challenge: _challenges[i],
+                      onTap: () => _openChallenge(_challenges[i]),
+                    );
+                  },
+                ),
+        ),
+
+        // Tips section header
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          color: Colors.white,
+          child: Row(
+            children: [
+              const Icon(
+                Icons.lightbulb_outline,
+                size: 16,
+                color: Color(0xFF2E7D32),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '$_activeTab Tips & Challenges',
+                style: GoogleFonts.dmSans(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF1A1A1A),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          flex: 2,
+          child: ListView.builder(
+            controller: _tipsScrollController,
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            itemCount: tips.length,
+            itemBuilder: (context, i) {
+              final tip = tips[i];
+              final isBookmarked = bookmarkProvider.isPlaygroundBookmarked(
+                tip.id,
+              );
+              final isHighlighted =
+                  widget.initialTipId == tip.id || _loadedTipId == tip.id;
+              return _TipCard(
+                tip: tip,
+                isBookmarked: isBookmarked,
+                isHighlighted: isHighlighted,
+                onBookmark: () => _togglePlaygroundBookmark(tip.id, tip.title),
+                onTap: () {
+                  final currentTab = _activeTab;
+                  if (currentTab == 'SQL') {
+                    _sqlController.text = tip.codeSnippet;
+                  } else {
+                    _pythonController.text = tip.codeSnippet;
+                  }
+                  setState(() {
+                    _loadedTipId = tip.id;
+                  });
+                  ScaffoldMessenger.of(context).clearSnackBars();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        '✓ "${tip.title}" loaded into editor',
+                        style: GoogleFonts.dmSans(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      backgroundColor: const Color(0xFF2E7D32),
+                      behavior: SnackBarBehavior.floating,
+                      duration: const Duration(seconds: 2),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Challenge Card (with dataset badge) ───────────────────────────────────────
+class _ChallengeCard extends StatelessWidget {
+  final _Challenge challenge;
+  final VoidCallback onTap;
+
+  const _ChallengeCard({required this.challenge, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade200),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withAlpha(8),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                _LanguageBadge(language: challenge.language),
+                const SizedBox(width: 6),
+                _DifficultyBadge(difficulty: challenge.difficulty),
+                if (challenge.datasetName != null) ...[
+                  const SizedBox(width: 6),
+                  _DatasetBadge(datasetName: challenge.datasetName!),
+                ],
+                const Spacer(),
+                const Icon(
+                  Icons.arrow_forward_ios,
+                  size: 12,
+                  color: Colors.grey,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              challenge.title,
+              style: GoogleFonts.dmSans(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF1A1A1A),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              challenge.description,
+              style: GoogleFonts.dmSans(
+                fontSize: 12,
+                color: Colors.grey.shade600,
+                height: 1.4,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Dataset Badge ─────────────────────────────────────────────────────────────
+class _DatasetBadge extends StatelessWidget {
+  final String datasetName;
+  const _DatasetBadge({required this.datasetName});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE0F2F1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.table_chart, size: 9, color: Color(0xFF00695C)),
+          const SizedBox(width: 3),
+          Text(
+            datasetName,
+            style: GoogleFonts.dmSans(
+              fontSize: 9,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF00695C),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Language Badge ────────────────────────────────────────────────────────────
+class _LanguageBadge extends StatelessWidget {
+  final String language;
+  const _LanguageBadge({required this.language});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppTheme.primaryContainer,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        language,
+        style: GoogleFonts.dmSans(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: AppTheme.primaryDark,
+        ),
+      ),
+    );
+  }
+}
+
+// ── Difficulty Badge ──────────────────────────────────────────────────────────
+class _DifficultyBadge extends StatelessWidget {
+  final String difficulty;
+  const _DifficultyBadge({required this.difficulty});
+
+  Color get _color {
+    switch (difficulty.toLowerCase()) {
+      case 'easy':
+        return const Color(0xFF2E7D32);
+      case 'medium':
+        return const Color(0xFFE65100);
+      case 'hard':
+        return const Color(0xFFC62828);
+      default:
+        return Colors.grey.shade600;
+    }
+  }
+
+  Color get _bg {
+    switch (difficulty.toLowerCase()) {
+      case 'easy':
+        return const Color(0xFFE8F5E9);
+      case 'medium':
+        return const Color(0xFFFFF3E0);
+      case 'hard':
+        return const Color(0xFFFFEBEE);
+      default:
+        return Colors.grey.shade100;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (difficulty.isEmpty) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: _bg,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        difficulty,
+        style: GoogleFonts.dmSans(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: _color,
+        ),
+      ),
+    );
+  }
+}
+
+// ── Dataset Preview Panel ─────────────────────────────────────────────────────
+class _DatasetPreviewPanel extends StatelessWidget {
+  final List<Map<String, dynamic>> rows;
+  const _DatasetPreviewPanel({required this.rows});
+
+  @override
+  Widget build(BuildContext context) {
+    if (rows.isEmpty) return const SizedBox.shrink();
+
+    final columns = rows.first.keys.toList();
+    final displayRows = rows.take(10).toList();
+
+    return Container(
+      constraints: const BoxConstraints(maxHeight: 180),
+      color: const Color(0xFF1A2332),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+            child: Text(
+              'Dataset Preview (showing ${displayRows.length} of ${rows.length} rows)',
+              style: GoogleFonts.dmSans(
+                fontSize: 10,
+                color: Colors.teal.shade200,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                  child: Table(
+                    defaultColumnWidth: const IntrinsicColumnWidth(),
+                    border: TableBorder.all(
+                      color: Colors.teal.withAlpha(60),
+                      width: 0.5,
+                    ),
+                    children: [
+                      // Header row
+                      TableRow(
+                        decoration: BoxDecoration(
+                          color: Colors.teal.withAlpha(40),
+                        ),
+                        children: columns
+                            .map(
+                              (col) => Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                child: Text(
+                                  col,
+                                  style: GoogleFonts.sourceCodePro(
+                                    fontSize: 10,
+                                    color: Colors.teal.shade200,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                      // Data rows
+                      ...displayRows.map(
+                        (row) => TableRow(
+                          children: columns
+                              .map(
+                                (col) => Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 3,
+                                  ),
+                                  child: Text(
+                                    '${row[col] ?? ''}',
+                                    style: GoogleFonts.sourceCodePro(
+                                      fontSize: 10,
+                                      color: const Color(0xFFD4D4D4),
+                                    ),
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Output Panel ──────────────────────────────────────────────────────────────
+class _OutputPanel extends StatelessWidget {
+  final String output;
+  const _OutputPanel({required this.output});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        border: Border(top: BorderSide(color: Colors.grey.shade800)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            color: const Color(0xFF2D2D2D),
+            child: Row(
+              children: [
+                const Icon(Icons.terminal, size: 14, color: Colors.green),
+                const SizedBox(width: 6),
+                Text(
+                  'Output',
+                  style: GoogleFonts.dmSans(
+                    fontSize: 12,
+                    color: Colors.green,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(14),
+              child: Text(
+                output,
+                style: GoogleFonts.sourceCodePro(
+                  fontSize: 12,
+                  color: const Color(0xFFD4D4D4),
+                  height: 1.6,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1028,7 +1720,6 @@ class _TipCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header row: title + language badge + bookmark
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 10, 8),
             child: Row(
@@ -1086,8 +1777,6 @@ class _TipCard extends StatelessWidget {
               ],
             ),
           ),
-
-          // Description / explanation text
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
             child: Text(
@@ -1099,8 +1788,6 @@ class _TipCard extends StatelessWidget {
               ),
             ),
           ),
-
-          // Code snippet block
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
             child: Container(
@@ -1120,8 +1807,6 @@ class _TipCard extends StatelessWidget {
               ),
             ),
           ),
-
-          // Load into editor button
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
             child: GestureDetector(

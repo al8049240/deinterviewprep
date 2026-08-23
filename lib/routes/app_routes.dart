@@ -8,9 +8,14 @@ import '../presentation/bookmarks_screen/bookmarks_screen.dart';
 import '../presentation/dashboard_screen/dashboard_screen.dart';
 import '../presentation/flashcards_screen/flashcards_screen.dart';
 import '../presentation/question_bank_screen/question_bank_screen.dart';
-import '../presentation/code_playground_screen/code_playground_screen.dart';
+import '../presentation/code_playground_screen/code_playground_list_screen.dart';
 import '../presentation/performance_trends_screen/performance_trends_screen.dart';
 import '../presentation/main_screen/main_screen.dart';
+import '../presentation/spark_subtopic_screen/spark_subtopic_screen.dart';
+import '../presentation/subtopic_screen/subtopic_screen.dart';
+import '../presentation/settings_screen/settings_screen.dart';
+import '../presentation/custom_quiz_builder_screen/custom_quiz_builder_screen.dart';
+import '../presentation/auth_screen/auth_screen.dart';
 
 class AppRoutes {
   static const String initial = '/';
@@ -24,6 +29,11 @@ class AppRoutes {
   static const String questionBankScreen = '/question-bank-screen';
   static const String codePlaygroundScreen = '/code-playground-screen';
   static const String performanceTrendsScreen = '/performance-trends-screen';
+  static const String sparkSubtopicScreen = '/spark-subtopic-screen';
+  static const String subtopicScreen = '/subtopic-screen';
+  static const String settingsScreen = '/settings-screen';
+  static const String customQuizBuilderScreen = '/custom-quiz-builder-screen';
+  static const String authScreen = '/auth-screen';
 }
 
 CustomTransitionPage _slidePage({
@@ -99,8 +109,10 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: AppRoutes.codePlaygroundScreen,
-      pageBuilder: (context, state) =>
-          _slidePage(key: state.pageKey, child: const CodePlaygroundScreen()),
+      pageBuilder: (context, state) => _slidePage(
+        key: state.pageKey,
+        child: const CodePlaygroundListScreen(),
+      ),
     ),
     GoRoute(
       path: AppRoutes.quizScreen,
@@ -112,6 +124,10 @@ final GoRouter appRouter = GoRouter(
             topicId: extra?['topicId'] as String? ?? 'sql',
             topicName: extra?['topicName'] as String? ?? 'SQL',
             questionCount: extra?['questionCount'] as int? ?? 15,
+            subtag: extra?['subtag'] as String?,
+            subtopicId: extra?['subtopicId'] as int?,
+            overrideQuestions:
+                extra?['overrideQuestions'] as List<Map<String, dynamic>>?,
           ),
         );
       },
@@ -146,6 +162,45 @@ final GoRouter appRouter = GoRouter(
         key: state.pageKey,
         child: const PerformanceTrendsScreen(),
       ),
+    ),
+    GoRoute(
+      path: AppRoutes.sparkSubtopicScreen,
+      pageBuilder: (context, state) =>
+          _slidePage(key: state.pageKey, child: const SparkSubtopicScreen()),
+    ),
+    GoRoute(
+      path: AppRoutes.subtopicScreen,
+      pageBuilder: (context, state) {
+        final extra = state.extra as Map<String, dynamic>?;
+        final topicName = extra?['topicName'] as String? ?? 'Apache Spark';
+        final colorValue = extra?['topicColor'] as int? ?? 0xFFE64A19;
+        final iconData = extra?['topicIcon'] as IconData? ?? Icons.quiz_rounded;
+        return _slidePage(
+          key: state.pageKey,
+          child: SubtopicScreen(
+            topicName: topicName,
+            topicColor: Color(colorValue),
+            topicIcon: iconData,
+          ),
+        );
+      },
+    ),
+    GoRoute(
+      path: AppRoutes.settingsScreen,
+      pageBuilder: (context, state) =>
+          _slidePage(key: state.pageKey, child: const SettingsScreen()),
+    ),
+    GoRoute(
+      path: AppRoutes.customQuizBuilderScreen,
+      pageBuilder: (context, state) => _slidePage(
+        key: state.pageKey,
+        child: const CustomQuizBuilderScreen(),
+      ),
+    ),
+    GoRoute(
+      path: AppRoutes.authScreen,
+      pageBuilder: (context, state) =>
+          _slidePage(key: state.pageKey, child: const AuthScreen()),
     ),
   ],
 );
