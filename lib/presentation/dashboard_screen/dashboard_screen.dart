@@ -194,6 +194,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           children: [
                             _StatBadge(
                               icon: '🔥',
+                              iconAsset: 'assets/images/resized_24x24.png',
                               label: '$mastered Mastered',
                               color: AppTheme.primaryContainer,
                               textColor: AppTheme.primaryDark,
@@ -956,12 +957,14 @@ class _QuestionDetailPage extends StatelessWidget {
 
 class _StatBadge extends StatelessWidget {
   final String icon;
+  final String? iconAsset;
   final String label;
   final Color color;
   final Color textColor;
 
   const _StatBadge({
     required this.icon,
+    this.iconAsset,
     required this.label,
     required this.color,
     required this.textColor,
@@ -975,13 +978,28 @@ class _StatBadge extends StatelessWidget {
         color: color,
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Text(
-        '$icon $label',
-        style: GoogleFonts.dmSans(
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
-          color: textColor,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (iconAsset != null)
+            Image.asset(
+              iconAsset!,
+              width: 24,
+              height: 24,
+              semanticLabel: 'Mastered',
+            )
+          else
+            Text(icon),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: GoogleFonts.dmSans(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: textColor,
+            ),
+          ),
+        ],
       ),
     );
   }
