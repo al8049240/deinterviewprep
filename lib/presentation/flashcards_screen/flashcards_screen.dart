@@ -588,6 +588,7 @@ class _CreateFlashcardSheetState extends State<_CreateFlashcardSheet> {
   }
 
   Future<void> _save() async {
+    _addTag(_tagInputCtrl.text);
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isSaving = true);
     try {
@@ -741,6 +742,7 @@ class _CreateFlashcardSheetState extends State<_CreateFlashcardSheet> {
               TextFormField(
                 controller: _frontCtrl,
                 maxLines: 3,
+                keyboardType: TextInputType.multiline,
                 validator: (v) =>
                     (v == null || v.trim().isEmpty) ? 'Required' : null,
                 style: GoogleFonts.dmSans(fontSize: 14),
@@ -791,6 +793,7 @@ class _CreateFlashcardSheetState extends State<_CreateFlashcardSheet> {
               TextFormField(
                 controller: _backCtrl,
                 maxLines: 4,
+                keyboardType: TextInputType.multiline,
                 validator: (v) =>
                     (v == null || v.trim().isEmpty) ? 'Required' : null,
                 style: GoogleFonts.dmSans(fontSize: 14),
@@ -844,6 +847,7 @@ class _CreateFlashcardSheetState extends State<_CreateFlashcardSheet> {
                   Expanded(
                     child: TextFormField(
                       controller: _tagInputCtrl,
+                      keyboardType: TextInputType.text,
                       style: GoogleFonts.dmSans(fontSize: 13),
                       onFieldSubmitted: _addTag,
                       decoration: InputDecoration(
