@@ -8,6 +8,7 @@ import './widgets/results_action_buttons_widget.dart';
 import './widgets/results_header_widget.dart';
 import './widgets/results_metrics_row_widget.dart';
 import './widgets/results_score_gauge_widget.dart';
+import './widgets/results_topic_breakdown_widget.dart';
 
 class ResultsScreen extends StatefulWidget {
   final String topicName;
@@ -207,6 +208,14 @@ class _ResultsScreenState extends State<ResultsScreen>
               const SizedBox(height: 12),
               _buildStreakCard(),
               const SizedBox(height: 16),
+              ResultsTopicBreakdownWidget(
+                topicId: widget.topicId,
+                topicName: widget.topicName,
+                correctAnswers: widget.correctAnswers,
+                totalQuestions: widget.totalQuestions,
+                questions: widget.questions,
+              ),
+              const SizedBox(height: 16),
               _buildUnlockQuestionsButton(),
               const SizedBox(height: 20),
               ResultsActionButtonsWidget(
@@ -248,6 +257,16 @@ class _ResultsScreenState extends State<ResultsScreen>
                         animation: _scoreAnim,
                         color: _performanceColor,
                         isMain: true,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: ResultsTopicBreakdownWidget(
+                        topicId: widget.topicId,
+                        topicName: widget.topicName,
+                        correctAnswers: widget.correctAnswers,
+                        totalQuestions: widget.totalQuestions,
+                        questions: widget.questions,
                       ),
                     ),
                   ],

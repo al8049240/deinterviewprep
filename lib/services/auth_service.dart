@@ -49,16 +49,15 @@ class AuthService {
         return true;
       } else {
         const webClientId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
-        if (webClientId.isEmpty) {
-          throw Exception('GOOGLE_WEB_CLIENT_ID is missing');
-        }
-
         final googleSignIn = GoogleSignIn.instance;
-        await googleSignIn.initialize(serverClientId: webClientId);
 
-        final googleUser = await googleSignIn.authenticate();
+        GoogleSignInAccount? googleUser = await googleSignIn
+            .attemptLightweightAuthentication();
+        googleUser ??= await googleSignIn.authenticate();
 
-        final googleAuth = googleUser.authentication;
+        if (googleUser == null) return false;
+
+        final googleAuth = await googleUser.authentication;
         final idToken = googleAuth.idToken;
 
         if (idToken == null) throw Exception('No ID Token found from Google');
