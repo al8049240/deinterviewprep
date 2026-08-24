@@ -9,6 +9,7 @@ import '../../providers/bookmark_provider.dart';
 import '../../routes/app_routes.dart';
 import '../../services/performance_service.dart';
 import '../../services/quiz_service.dart';
+import '../../services/statistics_repository.dart';
 import '../../theme/app_theme.dart';
 import './widgets/quiz_explanation_widget.dart';
 import './widgets/quiz_navigation_buttons_widget.dart';
@@ -530,6 +531,18 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
           return map;
         })
         .toList();
+
+    // Save to Supabase statistics (only if quiz was completed with at least 1 answer)
+    if (_selectedAnswers.isNotEmpty) {
+      StatisticsRepository.instance.saveQuizAttempt(
+        topicId: widget.topicId,
+        topicName: widget.topicName,
+        totalQuestions: _questions.length,
+        correctAnswers: correct,
+        durationSeconds: _totalSeconds,
+        answeredQuestions: questionsWithAnswers,
+      );
+    }
 
     context.pushReplacement(
       AppRoutes.resultsScreen,

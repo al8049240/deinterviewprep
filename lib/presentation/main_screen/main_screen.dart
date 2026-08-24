@@ -5,6 +5,7 @@ import '../../theme/app_theme.dart';
 import '../dashboard_screen/dashboard_screen.dart';
 import '../bookmarks_screen/bookmarks_screen.dart';
 import '../performance_trends_screen/performance_trends_screen.dart';
+import '../statistics_screen/statistics_screen.dart';
 
 class MainScreen extends StatefulWidget {
   final int initialIndex;
@@ -27,6 +28,7 @@ class _MainScreenState extends State<MainScreen> {
   final List<Widget> _screens = const [
     _HomeTab(),
     _BookmarksTab(),
+    _StatisticsTab(),
     _ProfileTab(),
   ];
 
@@ -71,6 +73,10 @@ class _MainScreenState extends State<MainScreen> {
               label: 'Bookmarks',
             ),
             BottomNavigationBarItem(
+              icon: Icon(Icons.bar_chart_rounded),
+              label: 'Stats',
+            ),
+            BottomNavigationBarItem(
               icon: Icon(Icons.person_rounded),
               label: 'Profile',
             ),
@@ -98,6 +104,15 @@ class _BookmarksTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const BookmarksScreen();
+  }
+}
+
+class _StatisticsTab extends StatelessWidget {
+  const _StatisticsTab();
+
+  @override
+  Widget build(BuildContext context) {
+    return const StatisticsScreen();
   }
 }
 

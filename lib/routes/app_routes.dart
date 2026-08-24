@@ -16,6 +16,7 @@ import '../presentation/subtopic_screen/subtopic_screen.dart';
 import '../presentation/settings_screen/settings_screen.dart';
 import '../presentation/custom_quiz_builder_screen/custom_quiz_builder_screen.dart';
 import '../presentation/auth_screen/auth_screen.dart';
+import '../presentation/statistics_screen/statistics_screen.dart';
 
 class AppRoutes {
   static const String initial = '/';
@@ -34,6 +35,7 @@ class AppRoutes {
   static const String settingsScreen = '/settings-screen';
   static const String customQuizBuilderScreen = '/custom-quiz-builder-screen';
   static const String authScreen = '/auth-screen';
+  static const String statisticsScreen = '/statistics-screen';
 }
 
 CustomTransitionPage _slidePage({
@@ -201,6 +203,11 @@ final GoRouter appRouter = GoRouter(
       path: AppRoutes.authScreen,
       pageBuilder: (context, state) =>
           _slidePage(key: state.pageKey, child: const AuthScreen()),
+    ),
+    GoRoute(
+      path: AppRoutes.statisticsScreen,
+      pageBuilder: (context, state) =>
+          _slidePage(key: state.pageKey, child: const StatisticsScreen()),
     ),
   ],
 );

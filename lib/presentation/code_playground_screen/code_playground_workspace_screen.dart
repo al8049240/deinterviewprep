@@ -18,8 +18,8 @@ class _AlwaysVisibleHScrollPanel extends StatefulWidget {
   const _AlwaysVisibleHScrollPanel({
     required this.child,
     this.trackHeight = 6.0,
-    this.trackColor = const Color(0xFF2A2A2A),
-    this.thumbColor = const Color(0xFF888888),
+    this.trackColor = const Color(0xFFE0E0E0),
+    this.thumbColor = const Color(0xFF9E9E9E),
     this.padding = EdgeInsets.zero,
   });
 

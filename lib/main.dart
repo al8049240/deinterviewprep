@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:sizer/sizer.dart';
 
 import './providers/bookmark_provider.dart';
+import './providers/statistics_provider.dart';
 import './services/performance_service.dart';
 import './services/supabase_service.dart';
 import './widgets/custom_error_widget.dart';
@@ -47,7 +48,13 @@ void main() async {
   GoRouter.optionURLReflectsImperativeAPIs = true;
 
   runApp(
-    ChangeNotifierProvider(create: (_) => BookmarkProvider(), child: MyApp()),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => BookmarkProvider()),
+        ChangeNotifierProvider(create: (_) => StatisticsProvider()),
+      ],
+      child: MyApp(),
+    ),
   );
 }
 
