@@ -1,10 +1,15 @@
 import 'dart:math';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../routes/app_routes.dart';
 import '../../services/auth_service.dart';
 import '../../services/performance_service.dart';
+import '../../services/statistics_repository.dart';
+import '../../models/statistics_models.dart';
 import '../../theme/app_theme.dart';
 import '../auth_screen/auth_screen.dart';
 import '../settings_screen/settings_screen.dart';
@@ -23,12 +28,16 @@ class PerformanceTrendsScreen extends StatefulWidget {
 
 class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
   final PerformanceService _service = PerformanceService();
+  List<QuizAttempt> _attempts = [];
+  List<QuizUserAnswer> _userAnswers = [];
+  bool _attemptsLoading = false;
 
   @override
   void initState() {
     super.initState();
     _service.addListener(_onDataChanged);
     _service.init();
+    _loadAttemptsData();
   }
 
   @override
@@ -45,6 +54,24 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
 
   void _onDataChanged() {
     if (mounted) setState(() {});
+  }
+
+  Future<void> _loadAttemptsData() async {
+    if (!AuthService.instance.isSignedIn) return;
+    setState(() => _attemptsLoading = true);
+    try {
+      final attempts = await StatisticsRepository.instance.fetchAttempts();
+      final answers = await StatisticsRepository.instance.fetchUserAnswers();
+      if (mounted) {
+        setState(() {
+          _attempts = attempts;
+          _userAnswers = answers;
+          _attemptsLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _attemptsLoading = false);
+    }
   }
 
   // ── Derived stats ──────────────────────────────────────────────────────────
@@ -201,7 +228,10 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
     final result = await Navigator.of(
       context,
     ).push<bool>(MaterialPageRoute(builder: (_) => const AuthScreen()));
-    if (result == true && mounted) setState(() {});
+    if (result == true && mounted) {
+      setState(() {});
+      _loadAttemptsData();
+    }
   }
 
   Future<void> _signOut() async {
@@ -275,6 +305,21 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
     );
   }
 
+  void _showUserDropdown(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _UserDropdownSheet(
+        onSignOut: _signOut,
+        onGoBack: () {
+          Navigator.pop(context);
+          context.go(AppRoutes.topicsListScreen);
+        },
+      ),
+    );
+  }
+
   // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
@@ -294,10 +339,46 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
         ),
         actions: [
           if (AuthService.instance.isSignedIn)
-            IconButton(
-              onPressed: _signOut,
-              icon: const Icon(Icons.logout_rounded, color: Colors.white),
-              tooltip: 'Sign Out',
+            GestureDetector(
+              onTap: () => _showUserDropdown(context),
+              child: Container(
+                margin: const EdgeInsets.only(right: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withAlpha(25),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white.withAlpha(60)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.person_rounded,
+                      color: Colors.white,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      AuthService.instance.displayName,
+                      style: GoogleFonts.dmSans(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(
+                      Icons.arrow_drop_down,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                  ],
+                ),
+              ),
             )
           else
             TextButton.icon(
@@ -360,14 +441,357 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
               _SkillBadgesRow(topicAccuracy: _topicAccuracy),
               const SizedBox(height: 24),
 
-              // 5. My Attempts
+              // 5. My Attempts (grouped by topic)
               _SectionTitle(title: 'My Attempts', icon: Icons.history_rounded),
               const SizedBox(height: 12),
-              _MyAttemptsSection(sessions: _service.sessions),
+              _attemptsLoading
+                  ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(24),
+                        child: CircularProgressIndicator(
+                          color: AppTheme.primary,
+                        ),
+                      ),
+                    )
+                  : _GroupedAttemptsSection(
+                      attempts: _attempts,
+                      userAnswers: _userAnswers,
+                    ),
               const SizedBox(height: 24),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// User Dropdown Sheet
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _UserDropdownSheet extends StatefulWidget {
+  final VoidCallback onSignOut;
+  final VoidCallback onGoBack;
+
+  const _UserDropdownSheet({required this.onSignOut, required this.onGoBack});
+
+  @override
+  State<_UserDropdownSheet> createState() => _UserDropdownSheetState();
+}
+
+class _UserDropdownSheetState extends State<_UserDropdownSheet> {
+  late TextEditingController _usernameController;
+  bool _isEditing = false;
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _usernameController = TextEditingController(
+      text: AuthService.instance.displayName,
+    );
+  }
+
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveUsername() async {
+    final newName = _usernameController.text.trim();
+    if (newName.isEmpty) return;
+    setState(() => _isSaving = true);
+    try {
+      await Supabase.instance.client.auth.updateUser(
+        UserAttributes(data: {'full_name': newName}),
+      );
+      if (mounted) {
+        setState(() {
+          _isEditing = false;
+          _isSaving = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Username updated!',
+              style: GoogleFonts.dmSans(fontSize: 13),
+            ),
+            backgroundColor: AppTheme.primary,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = AuthService.instance;
+    final email = auth.email;
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: EdgeInsets.fromLTRB(
+        24,
+        20,
+        24,
+        MediaQuery.of(context).viewInsets.bottom + 32,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Handle bar
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // Header
+          Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: const LinearGradient(
+                    colors: [AppTheme.primary, AppTheme.primaryLight],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: Center(
+                  child: Text(
+                    auth.displayName.isNotEmpty
+                        ? auth.displayName[0].toUpperCase()
+                        : 'U',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      auth.displayName,
+                      style: GoogleFonts.dmSans(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF1A1A1A),
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      email,
+                      style: GoogleFonts.dmSans(
+                        fontSize: 12,
+                        color: Colors.grey.shade500,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Divider(color: Colors.grey.shade100),
+          const SizedBox(height: 16),
+
+          // Username edit section
+          Text(
+            'Username',
+            style: GoogleFonts.dmSans(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey.shade500,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _isEditing
+                    ? TextField(
+                        controller: _usernameController,
+                        autofocus: true,
+                        style: GoogleFonts.dmSans(
+                          fontSize: 14,
+                          color: const Color(0xFF1A1A1A),
+                        ),
+                        decoration: InputDecoration(
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide(color: AppTheme.primary),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: const BorderSide(
+                              color: AppTheme.primary,
+                              width: 2,
+                            ),
+                          ),
+                          isDense: true,
+                        ),
+                      )
+                    : Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade50,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.grey.shade200),
+                        ),
+                        child: Text(
+                          auth.displayName,
+                          style: GoogleFonts.dmSans(
+                            fontSize: 14,
+                            color: const Color(0xFF1A1A1A),
+                          ),
+                        ),
+                      ),
+              ),
+              const SizedBox(width: 8),
+              if (_isEditing) ...[
+                _isSaving
+                    ? const SizedBox(
+                        width: 36,
+                        height: 36,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppTheme.primary,
+                        ),
+                      )
+                    : ElevatedButton(
+                        onPressed: _saveUsername,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primary,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: Text(
+                          'Save',
+                          style: GoogleFonts.dmSans(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                const SizedBox(width: 4),
+                TextButton(
+                  onPressed: () => setState(() => _isEditing = false),
+                  child: Text(
+                    'Cancel',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 13,
+                      color: Colors.grey.shade500,
+                    ),
+                  ),
+                ),
+              ] else
+                IconButton(
+                  onPressed: () => setState(() => _isEditing = true),
+                  icon: const Icon(Icons.edit_rounded, size: 18),
+                  color: AppTheme.primary,
+                  tooltip: 'Edit username',
+                ),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // Go back and prepare button
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: widget.onGoBack,
+              icon: const Icon(Icons.quiz_rounded, size: 18),
+              label: Text(
+                'Go back and prepare for the interview',
+                style: GoogleFonts.dmSans(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 0,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Sign out button
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () {
+                Navigator.pop(context);
+                widget.onSignOut();
+              },
+              icon: const Icon(Icons.logout_rounded, size: 18),
+              label: Text(
+                'Sign Out',
+                style: GoogleFonts.dmSans(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFFC62828),
+                side: const BorderSide(color: Color(0xFFC62828)),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1006,7 +1430,6 @@ class _TopicAccuracyDialogState extends State<_TopicAccuracyDialog> {
             ),
             const SizedBox(height: 12),
             if (topics.isNotEmpty) ...[
-              // Filter dropdown
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 decoration: BoxDecoration(
@@ -1192,7 +1615,6 @@ class _SkillBadgesRow extends StatelessWidget {
         separatorBuilder: (_, __) => const SizedBox(width: 12),
         itemBuilder: (context, i) {
           final skill = _skills[i];
-          // Check mastery: accuracy >= 80% for this skill topic
           final accuracy = topicAccuracy[skill.name];
           final isMastered = accuracy != null && accuracy >= 80.0;
           return _SkillBadgeCard(skill: skill, isMastered: isMastered);
@@ -1375,17 +1797,180 @@ class _ToggleChip extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// My Attempts Section
+// Grouped Attempts Section (My Attempts — grouped by topic)
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _MyAttemptsSection extends StatelessWidget {
-  final List<QuizSession> sessions;
+class _TopicAttemptGroup {
+  final String topicId;
+  final String topicName;
+  final List<QuizAttempt> attempts;
+  final List<QuizUserAnswer> incorrectAnswers;
 
-  const _MyAttemptsSection({required this.sessions});
+  _TopicAttemptGroup({
+    required this.topicId,
+    required this.topicName,
+    required this.attempts,
+    required this.incorrectAnswers,
+  });
+
+  int get totalAttempts => attempts.length;
+
+  double get bestScore {
+    if (attempts.isEmpty) return 0;
+    return attempts
+        .map(
+          (a) => a.totalQuestions > 0
+              ? a.correctAnswers / a.totalQuestions * 100
+              : 0.0,
+        )
+        .reduce(max);
+  }
+
+  DateTime get lastTried =>
+      attempts.map((a) => a.createdAt).reduce((a, b) => a.isAfter(b) ? a : b);
+
+  int get incorrectCount =>
+      incorrectAnswers.map((a) => a.questionId).toSet().length;
+}
+
+class _GroupedAttemptsSection extends StatefulWidget {
+  final List<QuizAttempt> attempts;
+  final List<QuizUserAnswer> userAnswers;
+
+  const _GroupedAttemptsSection({
+    required this.attempts,
+    required this.userAnswers,
+  });
+
+  @override
+  State<_GroupedAttemptsSection> createState() =>
+      _GroupedAttemptsSectionState();
+}
+
+class _GroupedAttemptsSectionState extends State<_GroupedAttemptsSection> {
+  Set<String> _selectedTopicIds = {};
+  bool _customPracticeMode = false;
+
+  List<_TopicAttemptGroup> get _groups {
+    final Map<String, List<QuizAttempt>> byTopic = {};
+    for (final attempt in widget.attempts) {
+      byTopic.putIfAbsent(attempt.topicId, () => []).add(attempt);
+    }
+
+    final attemptIds = widget.attempts.map((a) => a.id).toSet();
+    final Map<String, List<QuizUserAnswer>> incorrectByTopic = {};
+    for (final answer in widget.userAnswers) {
+      if (!answer.isCorrect && attemptIds.contains(answer.attemptId)) {
+        final attempt = widget.attempts.firstWhere(
+          (a) => a.id == answer.attemptId,
+          orElse: () => widget.attempts.first,
+        );
+        incorrectByTopic.putIfAbsent(attempt.topicId, () => []).add(answer);
+      }
+    }
+
+    return byTopic.entries.map((e) {
+      final topicAttempts = e.value
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      final topicName = topicAttempts.first.topicName;
+      final incorrect = incorrectByTopic[e.key] ?? [];
+      return _TopicAttemptGroup(
+        topicId: e.key,
+        topicName: topicName,
+        attempts: topicAttempts,
+        incorrectAnswers: incorrect,
+      );
+    }).toList()..sort((a, b) => b.lastTried.compareTo(a.lastTried));
+  }
+
+  void _startRedoSession(BuildContext context, _TopicAttemptGroup group) {
+    final uniqueIncorrectIds = group.incorrectAnswers
+        .map((a) => a.questionId)
+        .toSet()
+        .toList();
+
+    if (uniqueIncorrectIds.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'No incorrect questions to redo for ${group.topicName}!',
+            style: GoogleFonts.dmSans(fontSize: 13),
+          ),
+          backgroundColor: AppTheme.primary,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        ),
+      );
+      return;
+    }
+
+    final overrideQuestions = uniqueIncorrectIds
+        .map((id) => {'id': id, 'topicId': group.topicId})
+        .toList();
+
+    context.push(
+      AppRoutes.quizScreen,
+      extra: {
+        'topicId': group.topicId,
+        'topicName': '${group.topicName} (Redo)',
+        'questionCount': overrideQuestions.length,
+        'overrideQuestions': overrideQuestions,
+      },
+    );
+  }
+
+  void _startCustomPractice(BuildContext context) {
+    final selectedGroups = _groups
+        .where((g) => _selectedTopicIds.contains(g.topicId))
+        .toList();
+    final allIncorrectIds = <String>{};
+    final allOverride = <Map<String, dynamic>>[];
+
+    for (final group in selectedGroups) {
+      for (final answer in group.incorrectAnswers) {
+        if (!allIncorrectIds.contains(answer.questionId)) {
+          allIncorrectIds.add(answer.questionId);
+          allOverride.add({'id': answer.questionId, 'topicId': group.topicId});
+        }
+      }
+    }
+
+    if (allOverride.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'No incorrect questions found in selected topics.',
+            style: GoogleFonts.dmSans(fontSize: 13),
+          ),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        ),
+      );
+      return;
+    }
+
+    final topicNames = selectedGroups.map((g) => g.topicName).join(', ');
+    context.push(
+      AppRoutes.quizScreen,
+      extra: {
+        'topicId': 'custom_practice',
+        'topicName': 'Custom Practice',
+        'questionCount': allOverride.length,
+        'overrideQuestions': allOverride,
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (sessions.isEmpty) {
+    if (widget.attempts.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
@@ -1430,112 +2015,148 @@ class _MyAttemptsSection extends StatelessWidget {
       );
     }
 
-    final recent = sessions.reversed.take(10).toList();
+    final groups = _groups;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(10),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        children: recent.asMap().entries.map((entry) {
-          final i = entry.key;
-          final session = entry.value;
-          final isLast = i == recent.length - 1;
-          final accuracy = session.totalQuestions > 0
-              ? (session.correctAnswers / session.totalQuestions * 100)
-              : 0.0;
-          final accuracyColor = accuracy >= 70
-              ? const Color(0xFF2E7D32)
-              : accuracy >= 50
-              ? const Color(0xFFE65100)
-              : const Color(0xFFC62828);
-
-          return Column(
-            children: [
-              Padding(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Custom Practice Mode toggle
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                _customPracticeMode
+                    ? 'Select topics to mix incorrect questions'
+                    : 'Grouped by topic • Tap to expand',
+                style: GoogleFonts.dmSans(
+                  fontSize: 12,
+                  color: Colors.grey.shade500,
+                ),
+              ),
+            ),
+            GestureDetector(
+              onTap: () => setState(() {
+                _customPracticeMode = !_customPracticeMode;
+                if (!_customPracticeMode) _selectedTopicIds.clear();
+              }),
+              child: Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
+                  horizontal: 10,
+                  vertical: 5,
+                ),
+                decoration: BoxDecoration(
+                  color: _customPracticeMode
+                      ? AppTheme.primary
+                      : AppTheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(20),
                 ),
                 child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: AppTheme.primaryContainer,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(
-                        Icons.quiz_rounded,
-                        color: AppTheme.primary,
-                        size: 20,
-                      ),
+                    Icon(
+                      _customPracticeMode
+                          ? Icons.close_rounded
+                          : Icons.playlist_add_rounded,
+                      size: 14,
+                      color: _customPracticeMode
+                          ? Colors.white
+                          : AppTheme.primaryDark,
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            session.topicName,
-                            style: GoogleFonts.dmSans(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: const Color(0xFF1A1A1A),
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            _formatDate(session.timestamp),
-                            style: GoogleFonts.dmSans(
-                              fontSize: 11,
-                              color: Colors.grey.shade500,
-                            ),
-                          ),
-                        ],
+                    const SizedBox(width: 4),
+                    Text(
+                      _customPracticeMode ? 'Cancel' : 'Custom Practice',
+                      style: GoogleFonts.dmSans(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: _customPracticeMode
+                            ? Colors.white
+                            : AppTheme.primaryDark,
                       ),
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          '${accuracy.toStringAsFixed(0)}%',
-                          style: GoogleFonts.dmSans(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: accuracyColor,
-                          ),
-                        ),
-                        Text(
-                          '${session.correctAnswers}/${session.totalQuestions}',
-                          style: GoogleFonts.dmSans(
-                            fontSize: 11,
-                            color: Colors.grey.shade500,
-                          ),
-                        ),
-                      ],
                     ),
                   ],
                 ),
               ),
-              if (!isLast)
-                Divider(height: 1, indent: 68, color: Colors.grey.shade100),
-            ],
-          );
-        }).toList(),
-      ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+
+        // Topic cards
+        ...groups.map(
+          (group) => _TopicAttemptCard(
+            group: group,
+            isCustomPracticeMode: _customPracticeMode,
+            isSelected: _selectedTopicIds.contains(group.topicId),
+            onToggleSelect: () {
+              setState(() {
+                if (_selectedTopicIds.contains(group.topicId)) {
+                  _selectedTopicIds.remove(group.topicId);
+                } else {
+                  _selectedTopicIds.add(group.topicId);
+                }
+              });
+            },
+            onRedo: () => _startRedoSession(context, group),
+          ),
+        ),
+
+        // Start Custom Practice button
+        if (_customPracticeMode && _selectedTopicIds.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () => _startCustomPractice(context),
+              icon: const Icon(Icons.play_arrow_rounded, size: 20),
+              label: Text(
+                'Start Custom Practice (${_selectedTopicIds.length} topic${_selectedTopicIds.length > 1 ? 's' : ''})',
+                style: GoogleFonts.dmSans(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 0,
+              ),
+            ),
+          ),
+        ],
+      ],
     );
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Topic Attempt Card (expandable)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _TopicAttemptCard extends StatefulWidget {
+  final _TopicAttemptGroup group;
+  final bool isCustomPracticeMode;
+  final bool isSelected;
+  final VoidCallback onToggleSelect;
+  final VoidCallback onRedo;
+
+  const _TopicAttemptCard({
+    required this.group,
+    required this.isCustomPracticeMode,
+    required this.isSelected,
+    required this.onToggleSelect,
+    required this.onRedo,
+  });
+
+  @override
+  State<_TopicAttemptCard> createState() => _TopicAttemptCardState();
+}
+
+class _TopicAttemptCardState extends State<_TopicAttemptCard> {
+  bool _expanded = false;
 
   String _formatDate(DateTime dt) {
     final now = DateTime.now();
@@ -1545,6 +2166,349 @@ class _MyAttemptsSection extends StatelessWidget {
     if (diff.inDays < 7) return '${diff.inDays} days ago';
     return '${dt.day}/${dt.month}/${dt.year}';
   }
+
+  @override
+  Widget build(BuildContext context) {
+    final group = widget.group;
+    final bestScore = group.bestScore;
+    final scoreColor = bestScore >= 70
+        ? const Color(0xFF2E7D32)
+        : bestScore >= 50
+        ? const Color(0xFFE65100)
+        : const Color(0xFFC62828);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: widget.isSelected
+            ? Border.all(color: AppTheme.primary, width: 2)
+            : Border.all(color: Colors.grey.shade100),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(8),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Main row
+          InkWell(
+            onTap: widget.isCustomPracticeMode
+                ? widget.onToggleSelect
+                : () => setState(() => _expanded = !_expanded),
+            borderRadius: BorderRadius.circular(14),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                children: [
+                  // Checkbox in custom practice mode
+                  if (widget.isCustomPracticeMode) ...[
+                    Container(
+                      width: 22,
+                      height: 22,
+                      decoration: BoxDecoration(
+                        color: widget.isSelected
+                            ? AppTheme.primary
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: widget.isSelected
+                              ? AppTheme.primary
+                              : Colors.grey.shade400,
+                          width: 2,
+                        ),
+                      ),
+                      child: widget.isSelected
+                          ? const Icon(
+                              Icons.check,
+                              color: Colors.white,
+                              size: 14,
+                            )
+                          : null,
+                    ),
+                    const SizedBox(width: 10),
+                  ],
+                  // Topic icon
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.quiz_rounded,
+                      color: AppTheme.primary,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  // Topic info
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          group.topicName,
+                          style: GoogleFonts.dmSans(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF1A1A1A),
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 3),
+                        Row(
+                          children: [
+                            Text(
+                              '${group.totalAttempts} attempt${group.totalAttempts > 1 ? 's' : ''}',
+                              style: GoogleFonts.dmSans(
+                                fontSize: 11,
+                                color: Colors.grey.shade500,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              width: 3,
+                              height: 3,
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade400,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              _formatDate(group.lastTried),
+                              style: GoogleFonts.dmSans(
+                                fontSize: 11,
+                                color: Colors.grey.shade500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Score + expand
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        '${bestScore.toStringAsFixed(0)}%',
+                        style: GoogleFonts.dmSans(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: scoreColor,
+                        ),
+                      ),
+                      Text(
+                        'best score',
+                        style: GoogleFonts.dmSans(
+                          fontSize: 10,
+                          color: Colors.grey.shade400,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (!widget.isCustomPracticeMode) ...[
+                    const SizedBox(width: 6),
+                    Icon(
+                      _expanded
+                          ? Icons.keyboard_arrow_up_rounded
+                          : Icons.keyboard_arrow_down_rounded,
+                      color: Colors.grey.shade400,
+                      size: 20,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+
+          // Expanded details
+          if (_expanded && !widget.isCustomPracticeMode) ...[
+            Divider(height: 1, color: Colors.grey.shade100),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Stats row
+                  Row(
+                    children: [
+                      _AttemptStatChip(
+                        icon: Icons.repeat_rounded,
+                        label: '${group.totalAttempts} attempts',
+                        color: AppTheme.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      _AttemptStatChip(
+                        icon: Icons.close_rounded,
+                        label: '${group.incorrectCount} incorrect',
+                        color: const Color(0xFFC62828),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Incorrect questions section
+                  if (group.incorrectCount > 0) ...[
+                    Text(
+                      'Incorrect Questions',
+                      style: GoogleFonts.dmSans(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF1A1A1A),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    ...group.incorrectAnswers
+                        .map((a) => a.questionId)
+                        .toSet()
+                        .take(5)
+                        .map(
+                          (qId) => Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 6,
+                                  height: 6,
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFFC62828),
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Question ID: $qId',
+                                    style: GoogleFonts.dmSans(
+                                      fontSize: 11,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                    if (group.incorrectCount > 5)
+                      Text(
+                        '+${group.incorrectCount - 5} more incorrect questions',
+                        style: GoogleFonts.dmSans(
+                          fontSize: 11,
+                          color: Colors.grey.shade400,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    const SizedBox(height: 12),
+                  ] else ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE8F5E9),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.check_circle_rounded,
+                            color: Color(0xFF2E7D32),
+                            size: 16,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'All questions answered correctly!',
+                            style: GoogleFonts.dmSans(
+                              fontSize: 12,
+                              color: const Color(0xFF2E7D32),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+
+                  // Redo button
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: widget.onRedo,
+                      icon: const Icon(Icons.replay_rounded, size: 16),
+                      label: Text(
+                        group.incorrectCount > 0
+                            ? 'Redo ${group.incorrectCount} Failed Question${group.incorrectCount > 1 ? 's' : ''}'
+                            : 'Practice Again',
+                        style: GoogleFonts.dmSans(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppTheme.primary,
+                        side: const BorderSide(color: AppTheme.primary),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
-// end of file
+class _AttemptStatChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  const _AttemptStatChip({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withAlpha(20),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: GoogleFonts.dmSans(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

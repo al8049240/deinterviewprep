@@ -214,7 +214,7 @@ class SupabaseService {
           .schema('de_mobile_app')
           .from('code_playground')
           .select(
-            'playground_id, title, description, language, difficulty, starter_code, tips, code_playground_datasets(dataset_id, dataset_name)',
+            'playground_id, title, description, language, difficulty, tips',
           )
           .order('title', ascending: true);
       return List<Map<String, dynamic>>.from(result as List);
@@ -230,7 +230,7 @@ class SupabaseService {
           .schema('de_mobile_app')
           .from('code_playground')
           .select(
-            'playground_id, title, description, language, difficulty, code_playground_datasets(dataset_id, dataset_name)',
+            'playground_id, title, description, use_case, language, difficulty',
           )
           .order('title', ascending: true);
       return List<Map<String, dynamic>>.from(result as List);
@@ -247,7 +247,9 @@ class SupabaseService {
       final result = await client
           .schema('de_mobile_app')
           .from('code_playground')
-          .select('*, code_playground_datasets(*)')
+          .select(
+            'playground_id, title, description, use_case, language, difficulty, tips, solution_code, solution_explanation',
+          )
           .eq('playground_id', playgroundId)
           .single();
       return Map<String, dynamic>.from(result as Map);

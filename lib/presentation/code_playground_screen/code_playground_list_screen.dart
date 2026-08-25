@@ -26,7 +26,7 @@ class _CodePlaygroundListScreenState extends State<CodePlaygroundListScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _selectedLanguage = 'All';
 
-  static const List<String> _languages = ['All', 'SQL', 'Python'];
+  static const List<String> _languages = ['All', 'SQL', 'Python', 'Spark'];
 
   @override
   void initState() {
@@ -112,7 +112,7 @@ class _CodePlaygroundListScreenState extends State<CodePlaygroundListScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  '${_filtered.length} challenges',
+                  '${_filtered.length} code lab',
                   style: GoogleFonts.dmSans(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
@@ -396,10 +396,10 @@ class _ChallengeListCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final title = (challenge['title'] ?? '').toString();
+    final useCase = (challenge['use_case'] ?? '').toString();
     final description = (challenge['description'] ?? '').toString();
+    final displayText = useCase.isNotEmpty ? useCase : description;
     final language = (challenge['language'] ?? '').toString();
-    final dsMap = challenge['code_playground_datasets'];
-    final datasetName = dsMap is Map ? dsMap['dataset_name']?.toString() : null;
 
     return GestureDetector(
       onTap: onTap,
@@ -424,10 +424,6 @@ class _ChallengeListCard extends StatelessWidget {
             Row(
               children: [
                 _LanguagePill(language: language),
-                if (datasetName != null) ...[
-                  const SizedBox(width: 6),
-                  _DatasetPill(name: datasetName),
-                ],
                 const Spacer(),
                 GestureDetector(
                   onTap: onBookmark,
@@ -461,17 +457,19 @@ class _ChallengeListCard extends StatelessWidget {
                 color: const Color(0xFF1A1A1A),
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              description,
-              style: GoogleFonts.dmSans(
-                fontSize: 13,
-                color: Colors.grey.shade600,
-                height: 1.4,
+            if (displayText.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                displayText,
+                style: GoogleFonts.dmSans(
+                  fontSize: 13,
+                  color: Colors.grey.shade600,
+                  height: 1.4,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
+            ],
           ],
         ),
       ),
@@ -499,37 +497,6 @@ class _LanguagePill extends StatelessWidget {
           fontWeight: FontWeight.w700,
           color: isSQL ? const Color(0xFF1565C0) : const Color(0xFF6A1B9A),
         ),
-      ),
-    );
-  }
-}
-
-class _DatasetPill extends StatelessWidget {
-  final String name;
-  const _DatasetPill({required this.name});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-      decoration: BoxDecoration(
-        color: const Color(0xFFE0F2F1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.table_chart, size: 9, color: Color(0xFF00695C)),
-          const SizedBox(width: 3),
-          Text(
-            name,
-            style: GoogleFonts.dmSans(
-              fontSize: 9,
-              fontWeight: FontWeight.w700,
-              color: const Color(0xFF00695C),
-            ),
-          ),
-        ],
       ),
     );
   }

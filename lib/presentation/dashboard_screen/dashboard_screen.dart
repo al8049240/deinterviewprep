@@ -8,6 +8,7 @@ import '../../services/pro_service.dart';
 import '../../theme/app_theme.dart';
 import '../../models/flashcard_model.dart';
 import '../../providers/bookmark_provider.dart';
+import '../../providers/statistics_provider.dart';
 import '../paywall_screen/paywall_screen.dart';
 import '../question_bank_screen/question_bank_screen.dart';
 import '../developer_experiences_screen/developer_experiences_list_screen.dart';
@@ -28,6 +29,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.initState();
     _proService.addListener(_onProChanged);
     _proService.init();
+    // Load statistics asynchronously for max streak
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final statsProvider = context.read<StatisticsProvider>();
+      if (!statsProvider.hasData && !statsProvider.isLoading) {
+        statsProvider.loadStatistics();
+      }
+    });
   }
 
   @override
@@ -76,6 +84,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final mastered = _proService.cardsMastered;
     final isPro = _proService.isProUnlocked;
     final bookmarkProvider = context.watch<BookmarkProvider>();
+    final statsProvider = context.watch<StatisticsProvider>();
+    final longestStreak = statsProvider.hasData
+        ? statsProvider.statistics.longestStreak
+        : 0;
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundLight,
@@ -194,11 +206,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           children: [
                             _StatBadge(
                               icon: '🔥',
-                              iconAsset: 'assets/images/resized_24x24-1787559863899.png',
+                              iconAsset:
+                                  'assets/images/resized_24x24-1787559863899.png',
                               label: '$mastered Mastered',
                               color: AppTheme.primaryContainer,
                               textColor: AppTheme.primaryDark,
                             ),
+                            const SizedBox(width: 8),
+                            _MaxStreakBadge(longestStreak: longestStreak),
                           ],
                         ),
                       ],
@@ -949,6 +964,49 @@ class _QuestionDetailPage extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+// ── Max Streak Badge ──────────────────────────────────────────────────────────
+
+class _MaxStreakBadge extends StatelessWidget {
+  final int longestStreak;
+
+  const _MaxStreakBadge({required this.longestStreak});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: longestStreak > 0
+            ? const Color(0xFFFF6D00).withAlpha(30)
+            : Colors.white.withAlpha(25),
+        borderRadius: BorderRadius.circular(20),
+        border: longestStreak > 0
+            ? Border.all(color: const Color(0xFFFF6D00).withAlpha(80), width: 1)
+            : Border.all(color: Colors.white.withAlpha(40), width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('🔥', style: TextStyle(fontSize: 14)),
+          const SizedBox(width: 2),
+          const Text('🔥', style: TextStyle(fontSize: 11)),
+          const SizedBox(width: 4),
+          Text(
+            '$longestStreak Max Streak',
+            style: GoogleFonts.dmSans(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: longestStreak > 0
+                  ? const Color(0xFFFF6D00)
+                  : Colors.white.withAlpha(180),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
