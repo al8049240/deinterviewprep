@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../theme/app_theme.dart';
+import '../../services/auth_service.dart';
 import '../../services/pro_service.dart';
 import '../../services/supabase_service.dart';
 import '../../models/flashcard_model.dart';
@@ -73,11 +74,15 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
     });
 
     try {
-      // Fetch topics, flashcards, and user flashcards in parallel
+      final isSignedIn = AuthService.instance.isSignedIn;
+      final userFlashcardsFuture = isSignedIn
+          ? _supabaseService.fetchUserFlashcards()
+          : Future.value(<Map<String, dynamic>>[]);
+
       final results = await Future.wait([
         _supabaseService.fetchTopics(),
         _supabaseService.fetchFlashcards(),
-        _supabaseService.fetchUserFlashcards(),
+        userFlashcardsFuture,
       ]);
 
       final topicsRaw = results[0];
@@ -499,7 +504,7 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
                     ),
                   ],
                 ),
-          floatingActionButton: widget.initialCardId == null
+          floatingActionButton: widget.initialCardId == null && AuthService.instance.isSignedIn
               ? FloatingActionButton.extended(
                   onPressed: () => _showCreateFlashcardDialog(context),
                   backgroundColor: AppTheme.primary,

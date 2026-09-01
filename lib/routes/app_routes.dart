@@ -149,6 +149,9 @@ final GoRouter appRouter = GoRouter(
             topicId: extra?['topicId'] as String? ?? 'sql',
             maxStreak: extra?['maxStreak'] as int? ?? 0,
             questions: extra?['questions'] as List<Map<String, dynamic>>? ?? [],
+            overrideQuestions:
+                extra?['overrideQuestions'] as List<Map<String, dynamic>>? ??
+                const [],
           ),
         );
       },

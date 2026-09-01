@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../theme/app_theme.dart';
+import '../../services/auth_service.dart';
 import '../../services/supabase_service.dart';
 import '../../providers/bookmark_provider.dart';
 import '../bookmarks_screen/bookmarks_screen.dart';
@@ -126,9 +127,14 @@ class _QuestionBankScreenState extends State<QuestionBankScreen> {
       _errorMessage = null;
     });
     try {
+      final isSignedIn = AuthService.instance.isSignedIn;
+      final userScenariosFuture = isSignedIn
+          ? _supabase.fetchUserRealCaseScenarios()
+          : Future.value(<Map<String, dynamic>>[]);
+
       final results = await Future.wait([
         _supabase.fetchRealCaseScenarios(),
-        _supabase.fetchUserRealCaseScenarios(),
+        userScenariosFuture,
       ]);
 
       final official = (results[0])
@@ -296,16 +302,18 @@ class _QuestionBankScreenState extends State<QuestionBankScreen> {
               ),
             ],
           ),
-          floatingActionButton: FloatingActionButton.extended(
-            onPressed: _showCreateScenarioDialog,
-            backgroundColor: AppTheme.primary,
-            foregroundColor: Colors.white,
-            icon: const Icon(Icons.add_rounded),
-            label: Text(
-              'Create Scenario',
-              style: GoogleFonts.dmSans(fontWeight: FontWeight.w600),
-            ),
-          ),
+          floatingActionButton: AuthService.instance.isSignedIn
+              ? FloatingActionButton.extended(
+                  onPressed: _showCreateScenarioDialog,
+                  backgroundColor: AppTheme.primary,
+                  foregroundColor: Colors.white,
+                  icon: const Icon(Icons.add_rounded),
+                  label: Text(
+                    'Create Scenario',
+                    style: GoogleFonts.dmSans(fontWeight: FontWeight.w600),
+                  ),
+                )
+              : null,
           body: Column(
             children: [
               // ── Search Bar + Big Topic Filter ───────────────────────────────

@@ -516,10 +516,11 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
       durationSeconds: _totalSeconds,
     );
 
-    // Build questions list with selectedAnswer injected for results review
-    final questionsWithAnswers = _filteredMaps
-        .take(widget.questionCount)
-        .toList()
+    final sourceQuestions = (widget.overrideQuestions != null && widget.overrideQuestions!.isNotEmpty)
+        ? widget.overrideQuestions!
+        : _filteredMaps.take(widget.questionCount).toList();
+
+    final questionsWithAnswers = sourceQuestions
         .asMap()
         .entries
         .map((entry) {
@@ -555,6 +556,7 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
         'topicId': widget.topicId,
         'maxStreak': _maxStreak,
         'questions': questionsWithAnswers,
+        'overrideQuestions': sourceQuestions,
       },
     );
   }

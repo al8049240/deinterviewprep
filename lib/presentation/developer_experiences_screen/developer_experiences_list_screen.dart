@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../models/developer_experience_model.dart';
 import '../../providers/bookmark_provider.dart';
+import '../../services/auth_service.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
 import '../bookmarks_screen/bookmarks_screen.dart';
@@ -79,6 +80,16 @@ class _DeveloperExperiencesListScreenState
   }
 
   Future<void> _loadUserExperiences() async {
+    if (!AuthService.instance.isSignedIn) {
+      if (mounted) {
+        setState(() {
+          _userExperiences = [];
+          _loadingUser = false;
+        });
+      }
+      return;
+    }
+
     try {
       final raw = await SupabaseService.instance
           .fetchUserDeveloperExperiences();
@@ -121,6 +132,8 @@ class _DeveloperExperiencesListScreenState
 
   @override
   Widget build(BuildContext context) {
+    final isSignedIn = AuthService.instance.isSignedIn;
+
     return Scaffold(
       backgroundColor: AppTheme.backgroundLight,
       appBar: AppBar(
@@ -163,16 +176,18 @@ class _DeveloperExperiencesListScreenState
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showAddExperienceSheet,
-        backgroundColor: const Color(0xFF37474F),
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.add_rounded),
-        label: Text(
-          'Add Experience',
-          style: GoogleFonts.dmSans(fontWeight: FontWeight.w600),
-        ),
-      ),
+      floatingActionButton: isSignedIn
+          ? FloatingActionButton.extended(
+              onPressed: _showAddExperienceSheet,
+              backgroundColor: const Color(0xFF37474F),
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.add_rounded),
+              label: Text(
+                'Add Experience',
+                style: GoogleFonts.dmSans(fontWeight: FontWeight.w600),
+              ),
+            )
+          : null,
       body: Consumer<BookmarkProvider>(
         builder: (context, bookmarkProvider, _) {
           return CustomScrollView(

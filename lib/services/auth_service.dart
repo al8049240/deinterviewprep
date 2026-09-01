@@ -7,9 +7,22 @@ class AuthService {
   static AuthService get instance => _instance ??= AuthService._();
   AuthService._();
 
-  SupabaseClient get _client => Supabase.instance.client;
+  SupabaseClient get _client {
+    if (!Supabase.instance.isInitialized) {
+      throw StateError('Supabase must be initialized before auth is used.');
+    }
+    return Supabase.instance.client;
+  }
 
-  User? get currentUser => _client.auth.currentUser;
+  User? get currentUser {
+    try {
+      if (!Supabase.instance.isInitialized) return null;
+      return _client.auth.currentUser;
+    } catch (_) {
+      return null;
+    }
+  }
+
   bool get isSignedIn => currentUser != null;
 
   Stream<AuthState> get authStateChanges => _client.auth.onAuthStateChange;

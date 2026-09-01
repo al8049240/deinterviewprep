@@ -18,6 +18,7 @@ class ResultsScreen extends StatefulWidget {
   final String topicId;
   final int maxStreak;
   final List<Map<String, dynamic>> questions;
+  final List<Map<String, dynamic>> overrideQuestions;
 
   const ResultsScreen({
     super.key,
@@ -29,6 +30,7 @@ class ResultsScreen extends StatefulWidget {
     required this.topicId,
     this.maxStreak = 0,
     this.questions = const [],
+    this.overrideQuestions = const [],
   });
 
   @override
@@ -207,6 +209,8 @@ class _ResultsScreenState extends State<ResultsScreen>
               const SizedBox(height: 12),
               _buildStreakCard(),
               const SizedBox(height: 16),
+              _buildFailedQuestionsReview(),
+              const SizedBox(height: 16),
               _buildUnlockQuestionsButton(),
               const SizedBox(height: 20),
               ResultsActionButtonsWidget(
@@ -262,6 +266,8 @@ class _ResultsScreenState extends State<ResultsScreen>
                 const SizedBox(height: 12),
                 _buildStreakCard(),
                 const SizedBox(height: 16),
+                _buildFailedQuestionsReview(),
+                const SizedBox(height: 16),
                 _buildUnlockQuestionsButton(),
                 const SizedBox(height: 20),
                 ResultsActionButtonsWidget(
@@ -277,13 +283,83 @@ class _ResultsScreenState extends State<ResultsScreen>
   }
 
   void _retakeQuiz() {
+    final retryQuestions = widget.overrideQuestions.isNotEmpty
+        ? widget.overrideQuestions
+        : null;
+
     context.pushReplacement(
       AppRoutes.quizScreen,
       extra: {
         'topicId': widget.topicId,
         'topicName': widget.topicName,
-        'questionCount': widget.totalQuestions,
+        'questionCount': retryQuestions?.length ?? widget.totalQuestions,
+        if (retryQuestions != null) 'overrideQuestions': retryQuestions,
       },
+    );
+  }
+
+  Widget _buildFailedQuestionsReview() {
+    final failed = <Map<String, dynamic>>[];
+    for (final q in widget.questions) {
+      final selected = q['selectedAnswer'];
+      final correctIndex = q['correctIndex'] as int? ?? 0;
+      final hasFailed = selected == null || selected != correctIndex;
+      if (hasFailed) {
+        failed.add(q);
+      }
+    }
+
+    if (failed.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return GestureDetector(
+      onTap: () => _showFailedQuestionsSheet(failed),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: const Color(0xFFCB3A3A),
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withAlpha(25),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 22),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Review ${failed.length} Failed Questions',
+                style: GoogleFonts.dmSans(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded, color: Colors.white, size: 22),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showFailedQuestionsSheet(List<Map<String, dynamic>> failedQuestions) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _FailedQuestionsBottomSheet(
+        topicName: widget.topicName,
+        failedQuestions: failedQuestions,
+        topicId: widget.topicId,
+      ),
     );
   }
 
@@ -453,6 +529,342 @@ class _ResultsScreenState extends State<ResultsScreen>
         questions: widget.questions,
         topicId: widget.topicId,
       ),
+    );
+  }
+}
+
+class _FailedQuestionsBottomSheet extends StatefulWidget {
+  final String topicName;
+  final List<Map<String, dynamic>> failedQuestions;
+  final String topicId;
+
+  const _FailedQuestionsBottomSheet({
+    required this.topicName,
+    required this.failedQuestions,
+    required this.topicId,
+  });
+
+  @override
+  State<_FailedQuestionsBottomSheet> createState() => _FailedQuestionsBottomSheetState();
+}
+
+class _FailedQuestionsBottomSheetState extends State<_FailedQuestionsBottomSheet> {
+  final Set<int> _selectedIndices = {};
+  final Set<int> _expandedIndices = {};
+
+  List<Map<String, dynamic>> get _selectedQuestions => _selectedIndices
+      .map((index) => widget.failedQuestions[index])
+      .toList();
+
+  void _toggleSelected(int index) {
+    setState(() {
+      if (_selectedIndices.contains(index)) {
+        _selectedIndices.remove(index);
+      } else {
+        _selectedIndices.add(index);
+      }
+    });
+  }
+
+  void _toggleExpanded(int index) {
+    setState(() {
+      if (_expandedIndices.contains(index)) {
+        _expandedIndices.remove(index);
+      } else {
+        _expandedIndices.add(index);
+      }
+    });
+  }
+
+  void _retakeQuestions() {
+    final questions = _selectedIndices.isEmpty
+        ? widget.failedQuestions
+        : _selectedQuestions;
+
+    Navigator.of(context).pop();
+
+    context.pushReplacement(
+      AppRoutes.quizScreen,
+      extra: {
+        'topicId': widget.topicId,
+        'topicName': widget.topicName,
+        'questionCount': questions.length,
+        'overrideQuestions': questions,
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasSelection = _selectedIndices.isNotEmpty;
+    final buttonLabel = hasSelection
+        ? 'Retake Selected (${_selectedIndices.length})'
+        : 'Retake All Questions';
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.9,
+      minChildSize: 0.52,
+      maxChildSize: 0.95,
+      builder: (ctx, scrollController) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFCB3A3A),
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+                  ),
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 5,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withAlpha(200),
+                          borderRadius: BorderRadius.circular(99),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  widget.topicName,
+                                  style: GoogleFonts.dmSans(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                Text(
+                                  '${widget.failedQuestions.length} questions failed',
+                                  style: GoogleFonts.dmSans(
+                                    fontSize: 12,
+                                    color: Colors.white70,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            icon: const Icon(Icons.close_rounded, color: Colors.white),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: ListView.separated(
+                    controller: scrollController,
+                    padding: const EdgeInsets.all(12),
+                    itemCount: widget.failedQuestions.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    itemBuilder: (context, index) {
+                      final q = widget.failedQuestions[index];
+                      final questionText = q['text'] as String? ?? 'Question';
+                      final options = (q['options'] as List<dynamic>? ?? const [])
+                          .map((e) => e.toString())
+                          .toList();
+                      final selected = q['selectedAnswer'];
+                      final selectedText = selected is int
+                          ? (selected >= 0 && selected < options.length
+                              ? options[selected]
+                              : 'No answer selected')
+                          : 'No answer selected';
+                      final correctIndex = q['correctIndex'] as int? ?? 0;
+                      final correctAnswerText = options.isNotEmpty && correctIndex < options.length
+                          ? options[correctIndex]
+                          : 'N/A';
+                      final explanation = q['explanation'] as String? ?? '';
+                      final isExpanded = _expandedIndices.contains(index);
+                      final isSelected = _selectedIndices.contains(index);
+                      final difficulty = (q['difficulty'] as String? ?? q['level'] as String? ?? 'JUNIOR').toUpperCase();
+
+                      return Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF7F7),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFF3CFCF)),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(12, 14, 0, 0),
+                              child: GestureDetector(
+                                onTap: () => _toggleSelected(index),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 180),
+                                  width: 22,
+                                  height: 22,
+                                  decoration: BoxDecoration(
+                                    color: isSelected ? const Color(0xFFCB3A3A) : Colors.white,
+                                    border: Border.all(
+                                      color: isSelected ? const Color(0xFFCB3A3A) : const Color(0xFFDBDBDB),
+                                      width: 1.5,
+                                    ),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: isSelected
+                                      ? const Icon(Icons.check, size: 16, color: Colors.white)
+                                      : null,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              child: Theme(
+                                data: Theme.of(context).copyWith(
+                                  dividerColor: Colors.transparent,
+                                  splashColor: Colors.transparent,
+                                  highlightColor: Colors.transparent,
+                                ),
+                                child: ExpansionTile(
+                                  tilePadding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
+                                  childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+                                  iconColor: const Color(0xFF303030),
+                                  collapsedIconColor: const Color(0xFF303030),
+                                  onExpansionChanged: (expanded) {
+                                    if (expanded) {
+                                      _toggleExpanded(index);
+                                    } else {
+                                      _expandedIndices.remove(index);
+                                    }
+                                  },
+                                  initiallyExpanded: isExpanded,
+                                  title: Row(
+                                    children: [
+                                      Text(
+                                        'Q${index + 1}',
+                                        style: GoogleFonts.dmSans(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w800,
+                                          color: const Color(0xFF1A1A1A),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFFFE1E1),
+                                          borderRadius: BorderRadius.circular(999),
+                                        ),
+                                        child: Text(
+                                          difficulty,
+                                          style: GoogleFonts.dmSans(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w700,
+                                            color: const Color(0xFFB42318),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  children: [
+                                    Text(
+                                      questionText,
+                                      style: GoogleFonts.dmSans(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700,
+                                        color: const Color(0xFF1A1A1A),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Your answer: $selectedText',
+                                      style: GoogleFonts.dmSans(
+                                        fontSize: 12,
+                                        color: const Color(0xFFB71C1C),
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      'Correct answer: $correctAnswerText',
+                                      style: GoogleFonts.dmSans(
+                                        fontSize: 12,
+                                        color: const Color(0xFF2E7D32),
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    if (explanation.isNotEmpty) ...[
+                                      const SizedBox(height: 10),
+                                      Text(
+                                        'Explanation:',
+                                        style: GoogleFonts.dmSans(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                          color: const Color(0xFF37474F),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        explanation,
+                                        style: GoogleFonts.dmSans(
+                                          fontSize: 12,
+                                          color: const Color(0xFF455A64),
+                                          height: 1.5,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    border: Border(top: BorderSide(color: Color(0xFFE9E9E9))),
+                  ),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _retakeQuestions,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF2E9D5A),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 0,
+                      ),
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: Text(
+                        buttonLabel,
+                        style: GoogleFonts.dmSans(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

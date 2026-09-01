@@ -313,20 +313,20 @@ class _CustomQuizBuilderScreenState extends State<CustomQuizBuilderScreen> {
         return;
       }
 
-      // ── Step 2: Load first batch immediately (fast start) ─────────────
+      // ── Step 2: load enough questions to satisfy the requested set size ─
       final firstBatch = <Map<String, dynamic>>[];
+      var remainingNeeded = _totalSelectedQuestions;
       for (final chunk in chunks) {
-        final needed = (_kFirstBatchSize - firstBatch.length).clamp(
-          0,
-          _kFirstBatchSize,
-        );
-        if (needed == 0) break;
+        if (remainingNeeded <= 0) break;
+
         final questions = await _fetchChunkPaged(
           chunk,
           offset: 0,
-          batchSize: needed,
+          batchSize: remainingNeeded,
         );
-        firstBatch.addAll(questions);
+        final accepted = questions.take(remainingNeeded).toList();
+        firstBatch.addAll(accepted);
+        remainingNeeded -= accepted.length;
       }
 
       firstBatch.shuffle(Random());
@@ -359,7 +359,7 @@ class _CustomQuizBuilderScreenState extends State<CustomQuizBuilderScreen> {
         extra: {
           'topicId': 'custom_mixed',
           'topicName': skillNames,
-          'questionCount': _totalSelectedQuestions,
+          'questionCount': firstBatch.length,
           'overrideQuestions': firstBatch,
         },
       );

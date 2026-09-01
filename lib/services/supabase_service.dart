@@ -93,6 +93,8 @@ class SupabaseService {
 
   /// Fetch user-created real case scenarios.
   Future<List<Map<String, dynamic>>> fetchUserRealCaseScenarios() async {
+    if (!AuthService.instance.isSignedIn) return [];
+
     try {
       final result = await client
           .schema('de_mobile_app')
@@ -115,6 +117,10 @@ class SupabaseService {
     required String solutionBreakdown,
     List<String> tags = const [],
   }) async {
+    if (!AuthService.instance.isSignedIn) {
+      throw StateError('Please sign in to create a custom real case scenario.');
+    }
+
     try {
       await client
           .schema('de_mobile_app')
@@ -134,6 +140,8 @@ class SupabaseService {
 
   /// Fetch user-created flashcards.
   Future<List<Map<String, dynamic>>> fetchUserFlashcards() async {
+    if (!AuthService.instance.isSignedIn) return [];
+
     try {
       final result = await client
           .schema('de_mobile_app')
@@ -153,6 +161,10 @@ class SupabaseService {
     required String category,
     List<String> tags = const [],
   }) async {
+    if (!AuthService.instance.isSignedIn) {
+      throw StateError('Please sign in to create a custom flashcard.');
+    }
+
     try {
       final userId = AuthService.instance.currentUser?.id;
       await client.schema('de_mobile_app').from('user_flashcards').insert({
@@ -169,6 +181,8 @@ class SupabaseService {
 
   /// Fetch user-created developer experiences.
   Future<List<Map<String, dynamic>>> fetchUserDeveloperExperiences() async {
+    if (!AuthService.instance.isSignedIn) return [];
+
     try {
       final result = await client
           .schema('de_mobile_app')
@@ -193,6 +207,10 @@ class SupabaseService {
     required String resultAchieved,
     required String keyTakeaway,
   }) async {
+    if (!AuthService.instance.isSignedIn) {
+      throw StateError('Please sign in to create a custom developer experience.');
+    }
+
     await client
         .schema('de_mobile_app')
         .from('user_developer_experiences')
