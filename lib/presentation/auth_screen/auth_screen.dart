@@ -151,7 +151,7 @@ class _AuthScreenState extends State<AuthScreen>
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [_buildSignInTab(), _buildSignUpTab()],
+        children: [_buildSignInTab(), _buildSignUpTabNoGoogle()],
       ),
     );
   }
@@ -179,7 +179,6 @@ class _AuthScreenState extends State<AuthScreen>
                 () => _signInPasswordVisible = !_signInPasswordVisible,
               ),
             ),
-            const SizedBox(height: 8),
             if (_errorMessage != null) ...[
               const SizedBox(height: 8),
               _buildErrorBanner(_errorMessage!),
@@ -195,7 +194,7 @@ class _AuthScreenState extends State<AuthScreen>
     );
   }
 
-  Widget _buildSignUpTab() {
+  Widget _buildSignUpTabNoGoogle() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Form(
@@ -204,10 +203,6 @@ class _AuthScreenState extends State<AuthScreen>
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const SizedBox(height: 8),
-            _buildGoogleButton(),
-            const SizedBox(height: 20),
-            _buildDivider(),
-            const SizedBox(height: 20),
             _buildTextField(
               controller: _signUpNameCtrl,
               label: 'Full Name',
@@ -309,6 +304,32 @@ class _AuthScreenState extends State<AuthScreen>
     );
   }
 
+  Widget _buildErrorBanner(String message) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFEBEE),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFEF9A9A)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline, color: Color(0xFFC62828), size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: GoogleFonts.dmSans(
+                fontSize: 13,
+                color: const Color(0xFFC62828),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildPasswordField({
     required TextEditingController controller,
     required String label,
@@ -358,32 +379,6 @@ class _AuthScreenState extends State<AuthScreen>
         fillColor: Colors.white,
       ),
       validator: validator,
-    );
-  }
-
-  Widget _buildErrorBanner(String message) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFEBEE),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFEF9A9A)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.error_outline, color: Color(0xFFC62828), size: 18),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              message,
-              style: GoogleFonts.dmSans(
-                fontSize: 13,
-                color: const Color(0xFFC62828),
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 

@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../routes/app_routes.dart';
 import '../../services/auth_service.dart';
 import '../../services/performance_service.dart';
+import '../../services/quiz_service.dart';
 import '../../services/statistics_repository.dart';
 import '../../models/statistics_models.dart';
 import '../../theme/app_theme.dart';
@@ -1829,8 +1830,25 @@ class _TopicAttemptGroup {
   DateTime get lastTried =>
       attempts.map((a) => a.createdAt).reduce((a, b) => a.isAfter(b) ? a : b);
 
-  int get incorrectCount =>
-      incorrectAnswers.map((a) => a.questionId).toSet().length;
+  QuizAttempt? get latestAttempt => attempts.isEmpty ? null : attempts.first;
+
+  List<QuizUserAnswer> get latestIncorrectAnswers => latestAttempt == null
+      ? const []
+      : incorrectAnswers
+            .where((answer) => answer.attemptId == latestAttempt!.id)
+            .toList();
+
+  int get incorrectCount => latestIncorrectAnswers
+      .map((a) => a.questionId)
+      .toSet()
+      .length;
+
+  int get totalCorrectQuestions => latestAttempt?.correctAnswers ?? 0;
+
+  int get totalFailedQuestions => latestAttempt == null
+      ? 0
+      : (latestAttempt!.totalQuestions - latestAttempt!.correctAnswers)
+            .clamp(0, latestAttempt!.totalQuestions);
 }
 
 class _GroupedAttemptsSection extends StatefulWidget {
@@ -1883,8 +1901,11 @@ class _GroupedAttemptsSectionState extends State<_GroupedAttemptsSection> {
     }).toList()..sort((a, b) => b.lastTried.compareTo(a.lastTried));
   }
 
-  void _startRedoSession(BuildContext context, _TopicAttemptGroup group) {
-    final uniqueIncorrectIds = group.incorrectAnswers
+  Future<void> _startRedoSession(
+    BuildContext context,
+    _TopicAttemptGroup group,
+  ) async {
+    final uniqueIncorrectIds = group.latestIncorrectAnswers
         .map((a) => a.questionId)
         .toSet()
         .toList();
@@ -1907,38 +1928,77 @@ class _GroupedAttemptsSectionState extends State<_GroupedAttemptsSection> {
       return;
     }
 
-    final overrideQuestions = uniqueIncorrectIds
-        .map((id) => {'id': id, 'topicId': group.topicId})
-        .toList();
+    try {
+      final questions = await QuizService.instance.fetchQuestionsByIds(
+        uniqueIncorrectIds,
+      );
 
-    context.push(
-      AppRoutes.quizScreen,
-      extra: {
-        'topicId': group.topicId,
-        'topicName': '${group.topicName} (Redo)',
-        'questionCount': overrideQuestions.length,
-        'overrideQuestions': overrideQuestions,
-      },
-    );
+      if (!mounted || questions.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Could not load questions for ${group.topicName}.',
+                style: GoogleFonts.dmSans(fontSize: 13),
+              ),
+              backgroundColor: Colors.orange,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            ),
+          );
+        }
+        return;
+      }
+
+      final overrideQuestions = questions.map((q) => q.toLegacyMap()).toList();
+
+      if (!mounted) return;
+
+      context.push(
+        AppRoutes.quizScreen,
+        extra: {
+          'topicId': group.topicId,
+          'topicName': '${group.topicName} (Redo)',
+          'questionCount': overrideQuestions.length,
+          'overrideQuestions': overrideQuestions,
+        },
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Failed to load failed questions for ${group.topicName}.',
+              style: GoogleFonts.dmSans(fontSize: 13),
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          ),
+        );
+      }
+    }
   }
 
-  void _startCustomPractice(BuildContext context) {
+  Future<void> _startCustomPractice(BuildContext context) async {
     final selectedGroups = _groups
         .where((g) => _selectedTopicIds.contains(g.topicId))
         .toList();
     final allIncorrectIds = <String>{};
-    final allOverride = <Map<String, dynamic>>[];
 
     for (final group in selectedGroups) {
-      for (final answer in group.incorrectAnswers) {
-        if (!allIncorrectIds.contains(answer.questionId)) {
-          allIncorrectIds.add(answer.questionId);
-          allOverride.add({'id': answer.questionId, 'topicId': group.topicId});
-        }
+      for (final answer in group.latestIncorrectAnswers) {
+        allIncorrectIds.add(answer.questionId);
       }
     }
 
-    if (allOverride.isEmpty) {
+    if (allIncorrectIds.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -1956,16 +2016,63 @@ class _GroupedAttemptsSectionState extends State<_GroupedAttemptsSection> {
       return;
     }
 
-    final topicNames = selectedGroups.map((g) => g.topicName).join(', ');
-    context.push(
-      AppRoutes.quizScreen,
-      extra: {
-        'topicId': 'custom_practice',
-        'topicName': 'Custom Practice',
-        'questionCount': allOverride.length,
-        'overrideQuestions': allOverride,
-      },
-    );
+    try {
+      final questionModels = await QuizService.instance.fetchQuestionsByIds(
+        allIncorrectIds.toList(),
+      );
+
+      if (!mounted || questionModels.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text(
+                'Could not load custom practice questions.',
+                style: TextStyle(fontSize: 13),
+              ),
+              backgroundColor: Colors.orange,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            ),
+          );
+        }
+        return;
+      }
+
+      final overrideQuestions = questionModels.map((q) => q.toLegacyMap()).toList();
+      final topicNames = selectedGroups.map((g) => g.topicName).join(', ');
+
+      if (!mounted) return;
+
+      context.push(
+        AppRoutes.quizScreen,
+        extra: {
+          'topicId': 'custom_practice',
+          'topicName': 'Custom Practice',
+          'questionCount': overrideQuestions.length,
+          'overrideQuestions': overrideQuestions,
+        },
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              'Failed to load custom practice questions.',
+              style: TextStyle(fontSize: 13),
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -2337,108 +2444,23 @@ class _TopicAttemptCardState extends State<_TopicAttemptCard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Stats row
+                  // Summary stats row
                   Row(
                     children: [
                       _AttemptStatChip(
-                        icon: Icons.repeat_rounded,
-                        label: '${group.totalAttempts} attempts',
-                        color: AppTheme.primary,
+                        icon: Icons.check_rounded,
+                        label: '${group.totalCorrectQuestions} correct',
+                        color: const Color(0xFF2E7D32),
                       ),
                       const SizedBox(width: 8),
                       _AttemptStatChip(
                         icon: Icons.close_rounded,
-                        label: '${group.incorrectCount} incorrect',
+                        label: '${group.totalFailedQuestions} failed',
                         color: const Color(0xFFC62828),
                       ),
                     ],
                   ),
                   const SizedBox(height: 12),
-
-                  // Incorrect questions section
-                  if (group.incorrectCount > 0) ...[
-                    Text(
-                      'Incorrect Questions',
-                      style: GoogleFonts.dmSans(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: const Color(0xFF1A1A1A),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    ...group.incorrectAnswers
-                        .map((a) => a.questionId)
-                        .toSet()
-                        .take(5)
-                        .map(
-                          (qId) => Padding(
-                            padding: const EdgeInsets.only(bottom: 4),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 6,
-                                  height: 6,
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFFC62828),
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    'Question ID: $qId',
-                                    style: GoogleFonts.dmSans(
-                                      fontSize: 11,
-                                      color: Colors.grey.shade600,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                    if (group.incorrectCount > 5)
-                      Text(
-                        '+${group.incorrectCount - 5} more incorrect questions',
-                        style: GoogleFonts.dmSans(
-                          fontSize: 11,
-                          color: Colors.grey.shade400,
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    const SizedBox(height: 12),
-                  ] else ...[
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE8F5E9),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.check_circle_rounded,
-                            color: Color(0xFF2E7D32),
-                            size: 16,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'All questions answered correctly!',
-                            style: GoogleFonts.dmSans(
-                              fontSize: 12,
-                              color: const Color(0xFF2E7D32),
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                  ],
 
                   // Redo button
                   SizedBox(

@@ -489,6 +489,36 @@ class QuizService {
     }
   }
 
+  Future<List<QuizQuestionModel>> fetchQuestionsByIds(
+    List<String> questionIds,
+  ) async {
+    final uniqueIds = questionIds
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+
+    if (uniqueIds.isEmpty) return [];
+
+    try {
+      final response = await _client
+          .schema('de_mobile_app')
+          .from(_questionTable)
+          .select(
+            'question_id, topic, sub_topics, type, difficulty, question, explaination, interview_tips, pro_tips, hint, interview_note',
+          )
+          .inFilter('question_id', uniqueIds);
+
+      final List<dynamic> questionData = response as List<dynamic>;
+      if (questionData.isEmpty) return [];
+      return await _buildModelsFromQuestionData(questionData);
+    } on PostgrestException catch (e) {
+      throw Exception('Database error: ${e.message}');
+    } catch (e) {
+      throw Exception('Failed to fetch questions by IDs: $e');
+    }
+  }
+
   Future<List<QuizQuestionModel>> fetchQuestionsBySubtopicId(
     int subtopicId,
   ) async {
