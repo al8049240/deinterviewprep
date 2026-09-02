@@ -28,13 +28,18 @@ class _AuthScreenState extends State<AuthScreen>
   bool _signUpPasswordVisible = false;
   bool _isLoading = false;
   String? _errorMessage;
+  String? _successMessage;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
-      if (mounted) setState(() => _errorMessage = null);
+      if (mounted) {
+        setState(() {
+          _errorMessage = null;
+        });
+      }
     });
   }
 
@@ -62,7 +67,16 @@ class _AuthScreenState extends State<AuthScreen>
       );
       if (mounted) Navigator.of(context).pop(true);
     } on AuthException catch (e) {
-      if (mounted) setState(() => _errorMessage = e.message);
+      if (!mounted) return;
+
+      final message = e.message;
+      final userMessage = AuthService.isEmailVerificationRequiredError(message)
+          ? 'Please confirm your email before signing in.'
+          : AuthService.isInvalidLoginError(message)
+              ? 'Invalid login credentials. Check your email and password or create a new account.'
+              : message;
+
+      setState(() => _errorMessage = userMessage);
     } catch (e) {
       if (mounted) {
         setState(() => _errorMessage = 'Sign in failed. Please try again.');
@@ -77,16 +91,45 @@ class _AuthScreenState extends State<AuthScreen>
     setState(() {
       _isLoading = true;
       _errorMessage = null;
+      _successMessage = null;
     });
     try {
-      await AuthService.instance.signUpWithEmail(
+      final response = await AuthService.instance.signUpWithEmail(
         email: _signUpEmailCtrl.text.trim(),
         password: _signUpPasswordCtrl.text,
         fullName: _signUpNameCtrl.text.trim(),
+        emailRedirectTo: 'deinterviewprep://login-callback',
       );
-      if (mounted) Navigator.of(context).pop(true);
+
+      if (!mounted) return;
+
+      if (response.user != null && response.session == null) {
+        _signUpNameCtrl.clear();
+        _signUpEmailCtrl.clear();
+        _signUpPasswordCtrl.clear();
+
+        setState(() {
+          _successMessage =
+              'Account created. Please check your email and click the verification link before signing in.';
+          _errorMessage = null;
+        });
+
+        _tabController.animateTo(0);
+        return;
+      }
+
+      Navigator.of(context).pop(true);
     } on AuthException catch (e) {
-      if (mounted) setState(() => _errorMessage = e.message);
+      if (!mounted) return;
+
+      final message = e.message;
+      final userMessage = AuthService.isDuplicateEmailError(message)
+          ? 'This email is already registered. Please sign in instead or use a different email.'
+          : AuthService.isEmailVerificationRequiredError(message)
+              ? 'Please confirm your email before signing in.'
+              : message;
+
+      setState(() => _errorMessage = userMessage);
     } catch (e) {
       if (mounted) {
         setState(() => _errorMessage = 'Sign up failed. Please try again.');
@@ -165,6 +208,10 @@ class _AuthScreenState extends State<AuthScreen>
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const SizedBox(height: 8),
+            if (_successMessage != null) ...[
+              _buildStatusBanner(_successMessage!, isError: false),
+              const SizedBox(height: 16),
+            ],
             _buildGoogleButton(),
             const SizedBox(height: 20),
             _buildDivider(),
@@ -203,6 +250,10 @@ class _AuthScreenState extends State<AuthScreen>
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const SizedBox(height: 8),
+            if (_successMessage != null) ...[
+              _buildStatusBanner(_successMessage!, isError: false),
+              const SizedBox(height: 16),
+            ],
             _buildTextField(
               controller: _signUpNameCtrl,
               label: 'Full Name',
@@ -304,30 +355,43 @@ class _AuthScreenState extends State<AuthScreen>
     );
   }
 
-  Widget _buildErrorBanner(String message) {
+  Widget _buildStatusBanner(String message, {required bool isError}) {
+    final color = isError ? const Color(0xFFFFEBEE) : const Color(0xFFE8F5E9);
+    final borderColor = isError ? const Color(0xFFEF9A9A) : const Color(0xFFA5D6A7);
+    final iconColor = isError ? const Color(0xFFC62828) : const Color(0xFF2E7D32);
+    final textColor = isError ? const Color(0xFFC62828) : const Color(0xFF1B5E20);
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFEBEE),
+        color: color,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFEF9A9A)),
+        border: Border.all(color: borderColor),
       ),
       child: Row(
         children: [
-          const Icon(Icons.error_outline, color: Color(0xFFC62828), size: 18),
+          Icon(
+            isError ? Icons.error_outline : Icons.check_circle_outline,
+            color: iconColor,
+            size: 18,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               message,
               style: GoogleFonts.dmSans(
                 fontSize: 13,
-                color: const Color(0xFFC62828),
+                color: textColor,
               ),
             ),
           ),
         ],
       ),
     );
+  }
+
+  Widget _buildErrorBanner(String message) {
+    return _buildStatusBanner(message, isError: true);
   }
 
   Widget _buildPasswordField({

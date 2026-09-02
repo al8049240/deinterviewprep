@@ -7,6 +7,32 @@ class AuthService {
   static AuthService get instance => _instance ??= AuthService._();
   AuthService._();
 
+  static bool isDuplicateEmailError(String message) {
+    final lower = message.toLowerCase();
+    final hasAlready = lower.contains('already');
+    final hasRegistered = lower.contains('registered') ||
+        lower.contains('exists') ||
+        lower.contains('in use') ||
+        lower.contains('used');
+    return (hasAlready && hasRegistered) ||
+        lower.contains('duplicate') ||
+        lower.contains('email already');
+  }
+
+  static bool isEmailVerificationRequiredError(String message) {
+    final lower = message.toLowerCase();
+    return (lower.contains('confirm') && lower.contains('email')) ||
+        (lower.contains('verify') && lower.contains('email')) ||
+        lower.contains('email not confirmed') ||
+        lower.contains('email confirmation');
+  }
+
+  static bool isInvalidLoginError(String message) {
+    final lower = message.toLowerCase();
+    return lower.contains('invalid login credentials') ||
+        lower.contains('invalid email or password');
+  }
+
   SupabaseClient get _client {
     if (!Supabase.instance.isInitialized) {
       throw StateError('Supabase must be initialized before auth is used.');
@@ -27,16 +53,20 @@ class AuthService {
 
   Stream<AuthState> get authStateChanges => _client.auth.onAuthStateChange;
 
-  /// Sign up with email and password
+  /// Sign up with email and password.
+  /// If email confirmation is enabled in Supabase, the user must click the
+  /// verification link before they can sign in.
   Future<AuthResponse> signUpWithEmail({
     required String email,
     required String password,
     String? fullName,
+    String? emailRedirectTo,
   }) async {
     return await _client.auth.signUp(
       email: email,
       password: password,
       data: fullName != null ? {'full_name': fullName} : null,
+      emailRedirectTo: emailRedirectTo,
     );
   }
 
@@ -57,7 +87,7 @@ class AuthService {
       if (kIsWeb) {
         await _client.auth.signInWithOAuth(
           OAuthProvider.google,
-          redirectTo: 'com.example.deinterviewprep://login-callback',
+          redirectTo: 'deinterviewprep://login-callback',
         );
         return true;
       } else {
