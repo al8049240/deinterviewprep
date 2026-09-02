@@ -445,7 +445,7 @@ class _UpgradeComparisonTable extends StatelessWidget {
       ['Feature', 'Chill', 'Serious'],
       ['Core Flashcards', '10', '150+'],
       ['Interview Questions', '2 free', '150+'],
-      ["Developer's Real Experiences 🗿", '✗', '✓'],
+          ['Data Dev Stories', '✗', '✓'],
       ['Code Playground', '✗', '✓'],
       ['SQL/Python Practice', '✗', '✓'],
       ['Cheatsheets & Guides', '✗', '✓'],
@@ -629,7 +629,7 @@ class _DevExperiencesBannerCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      "Developer's Real Experiences 🗿",
+              'Data Dev Stories',
                       style: GoogleFonts.dmSans(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,

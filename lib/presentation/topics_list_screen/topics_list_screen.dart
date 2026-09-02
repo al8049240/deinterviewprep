@@ -580,7 +580,7 @@ class _TopicLockedSheetState extends State<_TopicLockedSheet> {
       ['Feature', 'Chill', 'Serious'],
       ['Core Flashcards', '10', '150+'],
       ['Interview Questions', '2 free', '150+'],
-      ["Developer's Real Experiences 🗿", '✗', '✓'],
+              ['Data Dev Stories', '✗', '✓'],
       ['Code Playground', '✗', '✓'],
       ['SQL/Python Practice', '✗', '✓'],
       ['Cheatsheets & Guides', '✗', '✓'],

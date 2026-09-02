@@ -179,6 +179,18 @@ class SupabaseService {
     }
   }
 
+  /// Fetch curated developer stories for the public experiences section.
+  Future<List<Map<String, dynamic>>> fetchDeveloperExperiences() async {
+    final result = await client
+        .schema('de_mobile_app')
+        .from('data_dev_stories')
+        .select(
+          'id, title, category_tag, situation, task_description, action_taken, result_achieved, key_takeaway, created_at',
+        )
+        .order('created_at', ascending: false);
+    return List<Map<String, dynamic>>.from(result as List);
+  }
+
   /// Fetch user-created developer experiences.
   Future<List<Map<String, dynamic>>> fetchUserDeveloperExperiences() async {
     if (!AuthService.instance.isSignedIn) return [];

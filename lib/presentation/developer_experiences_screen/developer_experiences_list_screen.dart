@@ -69,14 +69,54 @@ class DeveloperExperiencesListScreen extends StatefulWidget {
 }
 
 class _DeveloperExperiencesListScreenState
-    extends State<DeveloperExperiencesListScreen> {
+    extends State<DeveloperExperiencesListScreen>
+    with SingleTickerProviderStateMixin {
+  List<DeveloperExperienceModel> _experiences = [];
   List<UserDeveloperExperience> _userExperiences = [];
+  late final TabController _tabController;
+  int _selectedTab = 0;
+  bool _loadingExperiences = true;
   bool _loadingUser = true;
+  String? _experiencesError;
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    _loadExperiences();
     _loadUserExperiences();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadExperiences() async {
+    setState(() {
+      _loadingExperiences = true;
+      _experiencesError = null;
+    });
+
+    try {
+      final raw = await SupabaseService.instance.fetchDeveloperExperiences();
+      if (mounted) {
+        setState(() {
+          _experiences = raw
+              .map(DeveloperExperienceModel.fromDataDevStory)
+              .toList();
+          _loadingExperiences = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _loadingExperiences = false;
+          _experiencesError = 'Unable to load developer experiences.';
+        });
+      }
+    }
   }
 
   Future<void> _loadUserExperiences() async {
@@ -138,7 +178,7 @@ class _DeveloperExperiencesListScreenState
       backgroundColor: AppTheme.backgroundLight,
       appBar: AppBar(
         title: Text(
-          "Developer's Real Experiences",
+          'Data Dev Stories',
           style: GoogleFonts.dmSans(
             fontWeight: FontWeight.w700,
             color: Colors.white,
@@ -176,7 +216,7 @@ class _DeveloperExperiencesListScreenState
           ),
         ],
       ),
-      floatingActionButton: isSignedIn
+      floatingActionButton: isSignedIn && _selectedTab == 1
           ? FloatingActionButton.extended(
               onPressed: _showAddExperienceSheet,
               backgroundColor: const Color(0xFF37474F),
@@ -234,9 +274,58 @@ class _DeveloperExperiencesListScreenState
                 ),
               ),
               // ── Built-in experiences ──────────────────────────────────────
-              SliverList(
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey.shade300),
+                    ),
+                    child: TabBar(
+                      controller: _tabController,
+                      onTap: (index) => setState(() => _selectedTab = index),
+                      labelColor: AppTheme.primary,
+                      unselectedLabelColor: Colors.grey,
+                      indicatorColor: AppTheme.primary,
+                      indicatorSize: TabBarIndicatorSize.tab,
+                      labelStyle: GoogleFonts.dmSans(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      tabs: const [
+                        Tab(text: 'From Dev'),
+                        Tab(text: 'My Experiences'),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              if (_selectedTab == 0 && _loadingExperiences)
+                const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.all(32),
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                )
+              else if (_selectedTab == 0 && _experiencesError != null)
+                SliverToBoxAdapter(
+                  child: _ExperiencesMessage(
+                    message: _experiencesError!,
+                    onRetry: _loadExperiences,
+                  ),
+                )
+              else if (_selectedTab == 0 && _experiences.isEmpty)
+                const SliverToBoxAdapter(
+                  child: _ExperiencesMessage(
+                    message: 'No developer experiences are available yet.',
+                  ),
+                )
+              else if (_selectedTab == 0)
+                SliverList(
                 delegate: SliverChildBuilderDelegate((context, index) {
-                  final exp = devExperiences[index];
+                  final exp = _experiences[index];
                   final isBookmarked = bookmarkProvider
                       .isDevExperienceBookmarked(exp.id);
                   final catColor = _categoryColor(exp.categoryTag);
@@ -281,10 +370,29 @@ class _DeveloperExperiencesListScreenState
                       );
                     },
                   );
-                }, childCount: devExperiences.length),
+                }, childCount: _experiences.length),
               ),
               // ── User-created experiences section ─────────────────────────
-              if (!_loadingUser && _userExperiences.isNotEmpty) ...[
+              if (_selectedTab == 1 && _loadingUser)
+                const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.all(32),
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                )
+              else if (_selectedTab == 1 && !isSignedIn)
+                const SliverToBoxAdapter(
+                  child: _ExperiencesMessage(
+                    message: 'Sign in to view and add your experiences.',
+                  ),
+                )
+              else if (_selectedTab == 1 && _userExperiences.isEmpty)
+                const SliverToBoxAdapter(
+                  child: _ExperiencesMessage(
+                    message: 'You have not added an experience yet.',
+                  ),
+                )
+              else if (_selectedTab == 1) ...[
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -358,6 +466,31 @@ class _DeveloperExperiencesListScreenState
 }
 
 // ── Experience Card ───────────────────────────────────────────────────────────
+
+class _ExperiencesMessage extends StatelessWidget {
+  final String message;
+  final VoidCallback? onRetry;
+
+  const _ExperiencesMessage({required this.message, this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        children: [
+          Text(message, textAlign: TextAlign.center),
+          if (onRetry != null)
+            TextButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Retry'),
+            ),
+        ],
+      ),
+    );
+  }
+}
 
 class _ExperienceCard extends StatelessWidget {
   final String id;

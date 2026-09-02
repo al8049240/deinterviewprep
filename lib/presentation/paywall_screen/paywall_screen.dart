@@ -259,7 +259,7 @@ class _ComparisonTable extends StatelessWidget {
       ['Feature', 'Chill', 'Serious'],
       ['Core Flashcards', '10', '150+'],
       ['Interview Questions', '2 free', '150+'],
-      ["Developer's Real Experiences 🗿", '✗', '✓'],
+              ['Data Dev Stories', '✗', '✓'],
       ['Code Playground', '✗', '✓'],
       ['SQL/Python Practice', '✗', '✓'],
       ['Cheatsheets & Guides', '✗', '✓'],

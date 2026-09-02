@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../models/developer_experience_model.dart';
 import '../../providers/bookmark_provider.dart';
+import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
 import '../code_playground_screen/code_playground_screen.dart';
 import '../developer_experiences_screen/developer_experience_detail_screen.dart';
@@ -96,11 +97,30 @@ class BookmarksScreen extends StatefulWidget {
 
 class _BookmarksScreenState extends State<BookmarksScreen> {
   late _BookmarkFilter _activeFilter;
+  Map<String, DeveloperExperienceModel> _experiencesById = const {};
 
   @override
   void initState() {
     super.initState();
     _activeFilter = widget.initialFilter;
+    _loadDeveloperExperiences();
+  }
+
+  Future<void> _loadDeveloperExperiences() async {
+    try {
+      final raw = await SupabaseService.instance.fetchDeveloperExperiences();
+      if (!mounted) return;
+      final experiences = raw
+          .map(DeveloperExperienceModel.fromDataDevStory)
+          .where((experience) => experience.id.isNotEmpty);
+      setState(() {
+        _experiencesById = {
+          for (final experience in experiences) experience.id: experience,
+        };
+      });
+    } catch (_) {
+      // The remainder of the bookmark list is still available offline.
+    }
   }
 
   @override
@@ -157,10 +177,11 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
         }
 
         void addExperienceEntries() {
-          for (final exp in devExperiences.where(
-            (e) => devExpIds.contains(e.id),
-          )) {
-            entries.add(_BookmarkEntry.experience(exp));
+          for (final id in devExpIds) {
+            final experience = _experiencesById[id];
+            if (experience != null) {
+              entries.add(_BookmarkEntry.experience(experience));
+            }
           }
         }
 
