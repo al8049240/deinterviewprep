@@ -5,13 +5,11 @@ import 'package:provider/provider.dart';
 import '../../models/developer_experience_model.dart';
 import '../../providers/bookmark_provider.dart';
 import '../../services/supabase_service.dart';
-import '../../services/pro_service.dart';
 import '../../theme/app_theme.dart';
 import '../code_playground_screen/code_playground_screen.dart';
 import '../developer_experiences_screen/developer_experience_detail_screen.dart';
 import '../flashcards_screen/flashcards_screen.dart';
 import '../quiz_screen/quiz_screen.dart' as quiz_screen show QuizScreen;
-import '../paywall_screen/paywall_screen.dart';
 
 // ── Filter enum ───────────────────────────────────────────────────────────────
 enum BookmarkFilter {
@@ -369,15 +367,6 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
     BuildContext context,
     BookmarkedRealCaseScenario scenario,
   ) {
-    if (!ProService().isProUnlocked) {
-      showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (_) => const PaywallScreen(),
-      );
-      return;
-    }
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => _RealCaseDetailPage(scenario: scenario),

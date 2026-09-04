@@ -17,6 +17,7 @@ import './widgets/topics_search_bar_widget.dart';
 
 class TopicModel {
   final String id;
+  final int? databaseTopicId;
   final String name;
   final String category;
   final String iconName;
@@ -28,6 +29,7 @@ class TopicModel {
 
   const TopicModel({
     required this.id,
+    this.databaseTopicId,
     required this.name,
     required this.category,
     required this.iconName,
@@ -41,6 +43,7 @@ class TopicModel {
   factory TopicModel.fromMap(Map<String, dynamic> map) {
     return TopicModel(
       id: map['id'] as String,
+      databaseTopicId: (map['databaseTopicId'] as num?)?.toInt(),
       name: map['name'] as String,
       category: map['category'] as String,
       iconName: map['iconName'] as String,
@@ -128,31 +131,14 @@ const List<Map<String, dynamic>> _kTopicMeta = [
     'iconColor': 0xFF0277BD,
   },
   {
-    'dbName': 'Microsoft Azure Data Engineer Associate',
-    'id': 'azure_data_engineer_dp203',
-    'name': 'Azure Data Engineer Associate (DP-203)',
-    'category': 'Certifications',
-    'iconName': 'verified',
+    'dbName': 'AI for Data Engineering',
+    'databaseTopicId': 701616,
+    'id': 'ai_agents_data_engineering',
+    'name': 'AI Agents for Data Engineering',
+    'category': 'AI & Automation',
+    'iconName': 'smart_toy',
     'isPro': true,
-    'iconColor': 0xFF0078D4,
-  },
-  {
-    'dbName': 'Google Cloud Professional Data Engineer',
-    'id': 'google_cloud_pde',
-    'name': 'Google Cloud Professional Data Engineer (PDE)',
-    'category': 'Certifications',
-    'iconName': 'verified',
-    'isPro': true,
-    'iconColor': 0xFF4285F4,
-  },
-  {
-    'dbName': 'AWS Certified Data Engineer Associate',
-    'id': 'aws_data_engineer_dea_c01',
-    'name': 'AWS Certified Data Engineer – Associate (DEA-C01)',
-    'category': 'Certifications',
-    'iconName': 'verified',
-    'isPro': true,
-    'iconColor': 0xFFFF9900,
+    'iconColor': 0xFF7B1FA2,
   },
   {
     'dbName': 'Docker & DevOps',
@@ -200,7 +186,7 @@ class _TopicsListScreenState extends State<TopicsListScreen>
     'Big Data',
     'Streaming',
     'Cloud',
-    'Certifications',
+    'AI & Automation',
     'DevOps',
   ];
 
@@ -288,6 +274,7 @@ class _TopicsListScreenState extends State<TopicsListScreen>
       AppRoutes.subtopicScreen,
       extra: {
         'topicName': _dbNameFor(topic.id),
+        'topicId': topic.databaseTopicId,
         'topicColor': topic.iconColor.value,
         'topicIcon': _iconDataFor(topic.iconName),
       },
@@ -315,7 +302,7 @@ class _TopicsListScreenState extends State<TopicsListScreen>
       'cloud': Icons.cloud_rounded,
       'inventory_2': Icons.inventory_2_rounded,
       'dataset': Icons.dataset_rounded,
-      'verified': Icons.verified_rounded,
+      'smart_toy': Icons.smart_toy_rounded,
     };
     return map[iconName] ?? Icons.quiz_rounded;
   }

@@ -255,11 +255,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     title: 'Real Case Scenario',
                     subtitle: isPro
                         ? 'Full real-world scenario library'
-                        : 'Serious Mode feature • unlock to access',
-                    color: isPro ? AppTheme.secondary : Colors.grey,
-                    onTap: isPro
-                        ? () => context.push(AppRoutes.questionBankScreen)
-                        : _showPaywall,
+                        : '3 free scenarios • unlock the full library',
+                    color: AppTheme.secondary,
+                    onTap: () => context.push(AppRoutes.questionBankScreen),
                   ),
                   const SizedBox(height: 10),
                   _QuickActionCard(
@@ -1203,6 +1201,7 @@ class _FreeTierCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final items = [
       '30 interview flashcards',
+      '3 real-world data engineering scenarios',
       'Free SQL, Python, Airflow, DevOps, and Big Data topics',
       'Quiz answers, explanations, and Pro Tips',
       'Skills Progress based on your real quiz history',

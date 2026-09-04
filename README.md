@@ -51,6 +51,18 @@ To run the app with environment variables defined in an env.json file, follow th
     --dart-define-from-file=env.json
     ```
 
+### Test Serious Mode without purchasing
+
+Premium access can be enabled in debug builds only:
+
+```bash
+flutter run --dart-define-from-file=env.json --dart-define=DEV_UNLOCK_PRO=true
+```
+
+For VS Code, add `"--dart-define=DEV_UNLOCK_PRO=true"` to the launch
+configuration's `args`. Remove the flag and perform a full restart to test
+Chill Mode again. Profile and release builds always ignore this override.
+
 ## 📁 Project Structure
 
 ```

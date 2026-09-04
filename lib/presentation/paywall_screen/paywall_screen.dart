@@ -249,6 +249,10 @@ class _FeatureList extends StatelessWidget {
       'Monthly certification questions',
       'New Azure, Google Cloud, and AWS Data Engineer practice questions',
     ),
+    (
+      'New content coming soon',
+      'Fresh interview topics, scenarios, and learning material are on the way',
+    ),
     ('Data Dev Stories', 'Learn from production incidents and trade-offs'),
     (
       'Premium statistics and trends',

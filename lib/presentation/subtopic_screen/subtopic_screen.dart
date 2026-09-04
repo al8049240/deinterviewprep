@@ -10,12 +10,14 @@ import '../../theme/app_theme.dart';
 /// Receives [topicName] and [topicColor] via GoRouter extras.
 class SubtopicScreen extends StatefulWidget {
   final String topicName;
+  final int? topicId;
   final Color topicColor;
   final IconData topicIcon;
 
   const SubtopicScreen({
     super.key,
     required this.topicName,
+    this.topicId,
     required this.topicColor,
     required this.topicIcon,
   });
@@ -33,6 +35,37 @@ class _SubtopicScreenState extends State<SubtopicScreen> {
   int _totalCount = 0;
 
   void Function()? _unsubscribe;
+
+  String _displaySubtopicName(String databaseName) {
+    if (widget.topicName != 'Cloud') return databaseName;
+    switch (databaseName.trim().toLowerCase()) {
+      case 'aws':
+        return 'AWS Certified Data Engineer – Associate (DEA-C01)';
+      case 'azure':
+        return 'Microsoft Certified: Azure Data Engineer Associate (DP-203)';
+      case 'gcp':
+        return 'Google Cloud Professional Data Engineer (GCP-PDE)';
+      default:
+        return databaseName;
+    }
+  }
+
+  String _displaySubtopicDescription(
+    String databaseName,
+    String databaseDescription,
+  ) {
+    if (widget.topicName != 'Cloud') return databaseDescription;
+    switch (databaseName.trim().toLowerCase()) {
+      case 'aws':
+        return 'Practice for the AWS Data Engineer Associate DEA-C01 exam.';
+      case 'azure':
+        return 'Practice aligned with the historical Azure DP-203 exam.';
+      case 'gcp':
+        return 'Practice for the Google Cloud Professional Data Engineer certification.';
+      default:
+        return databaseDescription;
+    }
+  }
 
   @override
   void initState() {
@@ -55,7 +88,9 @@ class _SubtopicScreenState extends State<SubtopicScreen> {
     }
     try {
       // 1. Resolve topic ID
-      final topicId = await QuizService.instance.fetchTopicId(widget.topicName);
+      final topicId =
+          widget.topicId ??
+          await QuizService.instance.fetchTopicId(widget.topicName);
       if (topicId == null) {
         if (mounted && !silent) {
           setState(() {
@@ -89,11 +124,15 @@ class _SubtopicScreenState extends State<SubtopicScreen> {
           final row = subtopicRows[i];
           final id = (row['id'] as num?)?.toInt();
           if (id == null) continue;
+          final databaseName = row['name']?.toString() ?? '';
           items.add(
             _SubtopicItem(
               id: id,
-              name: row['name']?.toString() ?? '',
-              description: row['description']?.toString() ?? '',
+              name: _displaySubtopicName(databaseName),
+              description: _displaySubtopicDescription(
+                databaseName,
+                row['description']?.toString() ?? '',
+              ),
               questionCount: counts[i],
             ),
           );

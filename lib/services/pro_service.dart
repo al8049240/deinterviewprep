@@ -47,6 +47,10 @@ class ProService extends ChangeNotifier {
     'IAP_LAUNCH_PROMOTION',
     defaultValue: true,
   );
+  static const bool _debugProOverride = bool.fromEnvironment(
+    'DEV_UNLOCK_PRO',
+    defaultValue: false,
+  );
   static const Set<String> _validProductIds = {
     launchProductId,
     lifetimeProductId,
@@ -72,7 +76,10 @@ class ProService extends ChangeNotifier {
   int _cardsMastered = 0;
   List<PerformanceEntry> _performanceHistory = [];
 
-  bool get isProUnlocked => _isProUnlocked;
+  /// Debug-only override for testing premium screens without a store purchase.
+  /// Profile and release builds ignore the flag even if it is supplied.
+  bool get isProUnlocked =>
+      _isProUnlocked || (kDebugMode && _debugProOverride);
   bool get storeAvailable => _storeAvailable;
   bool get isLoadingStore => _isLoadingStore;
   bool get purchasePending => _purchasePending;

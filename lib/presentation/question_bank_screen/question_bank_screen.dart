@@ -87,6 +87,7 @@ class QuestionBankScreen extends StatefulWidget {
 }
 
 class _QuestionBankScreenState extends State<QuestionBankScreen> {
+  static const int _freeScenarioLimit = 3;
   final SupabaseService _supabase = SupabaseService.instance;
   final ProService _proService = ProService();
 
@@ -250,64 +251,6 @@ class _QuestionBankScreenState extends State<QuestionBankScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_proService.isProUnlocked) {
-      return Scaffold(
-        backgroundColor: AppTheme.backgroundLight,
-        appBar: AppBar(
-          title: Text(
-            'Real Case Scenario',
-            style: GoogleFonts.dmSans(
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-            ),
-          ),
-          backgroundColor: AppTheme.primary,
-          iconTheme: const IconThemeData(color: Colors.white),
-        ),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.lock_rounded,
-                  size: 64,
-                  color: AppTheme.secondary,
-                ),
-                const SizedBox(height: 18),
-                Text(
-                  'Real Case Scenarios are locked',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.dmSans(
-                    fontSize: 21,
-                    fontWeight: FontWeight.w800,
-                    color: const Color(0xFF1A1A1A),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Unlock Serious Mode to access the complete real-world scenario library.',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.dmSans(
-                    fontSize: 14,
-                    height: 1.5,
-                    color: Colors.grey.shade600,
-                  ),
-                ),
-                const SizedBox(height: 22),
-                ElevatedButton.icon(
-                  onPressed: _showPaywall,
-                  icon: const Icon(Icons.workspace_premium_rounded),
-                  label: const Text('Unlock Serious Mode'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
     return Consumer<BookmarkProvider>(
       builder: (context, bookmarkProvider, _) {
         final filtered = _filteredScenarios;
@@ -539,6 +482,10 @@ class _QuestionBankScreenState extends State<QuestionBankScreen> {
                         itemCount: filtered.length,
                         itemBuilder: (ctx, i) {
                           final scenario = filtered[i];
+                          final globalIndex = _allScenarios.indexOf(scenario);
+                          final isLocked = !_proService.isProUnlocked &&
+                              !scenario.isUserCreated &&
+                              globalIndex >= _freeScenarioLimit;
                           final isExpanded = _expandedIndex == i;
                           final isBookmarked = bookmarkProvider
                               .isRealCaseBookmarked(scenario.id);
@@ -546,11 +493,15 @@ class _QuestionBankScreenState extends State<QuestionBankScreen> {
                             scenario: scenario,
                             isExpanded: isExpanded,
                             isBookmarked: isBookmarked,
-                            isLocked: false,
-                            onTap: () => setState(() {
-                              _expandedIndex = isExpanded ? null : i;
-                            }),
-                            onBookmark: () => _toggleBookmark(ctx, scenario),
+                            isLocked: isLocked,
+                            onTap: isLocked
+                                ? _showPaywall
+                                : () => setState(() {
+                                    _expandedIndex = isExpanded ? null : i;
+                                  }),
+                            onBookmark: isLocked
+                                ? _showPaywall
+                                : () => _toggleBookmark(ctx, scenario),
                           );
                         },
                       ),

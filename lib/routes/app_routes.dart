@@ -184,6 +184,7 @@ final GoRouter appRouter = GoRouter(
           key: state.pageKey,
           child: SubtopicScreen(
             topicName: topicName,
+            topicId: extra?['topicId'] as int?,
             topicColor: Color(colorValue),
             topicIcon: iconData,
           ),
