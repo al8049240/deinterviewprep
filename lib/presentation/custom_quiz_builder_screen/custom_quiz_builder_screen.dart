@@ -8,7 +8,9 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../routes/app_routes.dart';
 import '../../services/quiz_service.dart';
+import '../../services/pro_service.dart';
 import '../../theme/app_theme.dart';
+import '../paywall_screen/paywall_screen.dart';
 
 // ── Data models ───────────────────────────────────────────────────────────────
 
@@ -95,6 +97,7 @@ class CustomQuizBuilderScreen extends StatefulWidget {
 
 class _CustomQuizBuilderScreenState extends State<CustomQuizBuilderScreen> {
   final QuizService _quizService = QuizService.instance;
+  final ProService _proService = ProService();
 
   bool _isLoadingSkills = true;
   bool _isStartingQuiz = false;
@@ -119,7 +122,36 @@ class _CustomQuizBuilderScreenState extends State<CustomQuizBuilderScreen> {
   @override
   void initState() {
     super.initState();
-    _loadSkills();
+    _proService.addListener(_onProChanged);
+    _proService.init();
+    if (_proService.isProUnlocked) {
+      _loadSkills();
+    } else {
+      _isLoadingSkills = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _proService.removeListener(_onProChanged);
+    super.dispose();
+  }
+
+  void _onProChanged() {
+    if (!mounted) return;
+    if (_proService.isProUnlocked && _skills.isEmpty && !_isLoadingSkills) {
+      _loadSkills();
+    }
+    setState(() {});
+  }
+
+  void _showPaywall() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const PaywallScreen(),
+    );
   }
 
   Future<void> _loadSkills() async {
@@ -434,6 +466,23 @@ class _CustomQuizBuilderScreenState extends State<CustomQuizBuilderScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_proService.isProUnlocked) {
+      return Scaffold(
+        backgroundColor: AppTheme.backgroundLight,
+        appBar: AppBar(
+          backgroundColor: AppTheme.primary,
+          foregroundColor: Colors.white,
+          title: const Text('Build Custom Mock Test'),
+        ),
+        body: Center(
+          child: ElevatedButton.icon(
+            onPressed: _showPaywall,
+            icon: const Icon(Icons.lock_rounded),
+            label: const Text('Unlock Serious Mode'),
+          ),
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: AppTheme.backgroundLight,
       appBar: AppBar(

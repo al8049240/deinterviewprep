@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class PerformanceEntry {
@@ -36,6 +38,19 @@ class PerformanceEntry {
 }
 
 class ProService extends ChangeNotifier {
+  /// Create both of these as non-consumable products in App Store Connect and
+  /// Google Play Console. Enable the launch product at build time with:
+  /// --dart-define=IAP_LAUNCH_PROMOTION=true
+  static const String launchProductId = 'de_interview_prep_lifetime_launch';
+  static const String lifetimeProductId = 'de_interview_prep_lifetime';
+  static const bool isLaunchPromotion = bool.fromEnvironment(
+    'IAP_LAUNCH_PROMOTION',
+    defaultValue: true,
+  );
+  static const Set<String> _validProductIds = {
+    launchProductId,
+    lifetimeProductId,
+  };
   static const String _proKey = 'is_pro_unlocked';
   static const String _streakKey = 'daily_streak';
   static const String _lastStudyKey = 'last_study_date';
@@ -43,11 +58,31 @@ class ProService extends ChangeNotifier {
   static const String _performanceKey = 'performance_entries';
 
   bool _isProUnlocked = false;
+  bool _isInitialized = false;
+  bool _storeAvailable = false;
+  bool _isLoadingStore = false;
+  bool _purchasePending = false;
+  bool _restorePending = false;
+  String? _purchaseError;
+  ProductDetails? _lifetimeProduct;
+  // Kept for the lifetime of this app-scoped singleton.
+  // ignore: unused_field
+  StreamSubscription<List<PurchaseDetails>>? _purchaseSubscription;
   int _dailyStreak = 0;
   int _cardsMastered = 0;
   List<PerformanceEntry> _performanceHistory = [];
 
   bool get isProUnlocked => _isProUnlocked;
+  bool get storeAvailable => _storeAvailable;
+  bool get isLoadingStore => _isLoadingStore;
+  bool get purchasePending => _purchasePending;
+  bool get restorePending => _restorePending;
+  String? get purchaseError => _purchaseError;
+  ProductDetails? get lifetimeProduct => _lifetimeProduct;
+  String get displayPrice =>
+      _lifetimeProduct?.price ?? (isLaunchPromotion ? r'$9.99' : r'$14.99');
+  String get activeProductId =>
+      isLaunchPromotion ? launchProductId : lifetimeProductId;
   int get dailyStreak => _dailyStreak;
   int get cardsMastered => _cardsMastered;
   List<PerformanceEntry> get performanceHistory =>
@@ -58,12 +93,127 @@ class ProService extends ChangeNotifier {
   ProService._internal();
 
   Future<void> init() async {
+    if (_isInitialized) return;
+    _isInitialized = true;
     final prefs = await SharedPreferences.getInstance();
     _isProUnlocked = prefs.getBool(_proKey) ?? false;
     _cardsMastered = prefs.getInt(_cardsMasteredKey) ?? 0;
     await _updateStreak(prefs);
     await _loadPerformanceHistory(prefs);
     notifyListeners();
+
+    if (kIsWeb) return;
+    _purchaseSubscription = InAppPurchase.instance.purchaseStream.listen(
+      _handlePurchaseUpdates,
+      onError: (Object error) {
+        _purchasePending = false;
+        _restorePending = false;
+        _purchaseError = 'The store returned an unexpected error.';
+        notifyListeners();
+      },
+    );
+    await _loadStoreProduct();
+  }
+
+  Future<void> _loadStoreProduct() async {
+    _isLoadingStore = true;
+    _purchaseError = null;
+    notifyListeners();
+    try {
+      _storeAvailable = await InAppPurchase.instance.isAvailable();
+      if (!_storeAvailable) {
+        _purchaseError = 'Purchases are not available on this device.';
+        return;
+      }
+      final response = await InAppPurchase.instance.queryProductDetails({
+        activeProductId,
+      });
+      if (response.error != null) {
+        _purchaseError = response.error!.message;
+      } else if (response.productDetails.isEmpty) {
+        _purchaseError =
+            'The lifetime product is not configured for this store yet.';
+      } else {
+        _lifetimeProduct = response.productDetails.first;
+      }
+    } catch (_) {
+      _purchaseError = 'Could not connect to the store. Please try again.';
+    } finally {
+      _isLoadingStore = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> purchaseLifetime() async {
+    if (_isProUnlocked) return true;
+    if (_lifetimeProduct == null) {
+      await _loadStoreProduct();
+    }
+    final product = _lifetimeProduct;
+    if (product == null) return false;
+    _purchaseError = null;
+    _purchasePending = true;
+    notifyListeners();
+    try {
+      final started = await InAppPurchase.instance.buyNonConsumable(
+        purchaseParam: PurchaseParam(productDetails: product),
+      );
+      if (!started) {
+        _purchasePending = false;
+        _purchaseError = 'The purchase could not be started.';
+        notifyListeners();
+      }
+      return started;
+    } catch (_) {
+      _purchasePending = false;
+      _purchaseError = 'The purchase could not be started. Please try again.';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<void> _handlePurchaseUpdates(List<PurchaseDetails> purchases) async {
+    for (final purchase in purchases) {
+      if (!_validProductIds.contains(purchase.productID)) continue;
+      switch (purchase.status) {
+        case PurchaseStatus.pending:
+          _purchasePending = true;
+          break;
+        case PurchaseStatus.purchased:
+        case PurchaseStatus.restored:
+          // The stores have validated the transaction. Before a large-scale
+          // launch, also send serverVerificationData to a backend for
+          // server-side receipt verification and entitlement synchronization.
+          if (purchase.verificationData.serverVerificationData.isNotEmpty) {
+            await _grantProEntitlement();
+            _purchaseError = null;
+          } else {
+            _purchaseError = 'The purchase receipt could not be verified.';
+          }
+          _purchasePending = false;
+          _restorePending = false;
+          break;
+        case PurchaseStatus.error:
+          _purchasePending = false;
+          _restorePending = false;
+          _purchaseError = purchase.error?.message ?? 'Purchase failed.';
+          break;
+        case PurchaseStatus.canceled:
+          _purchasePending = false;
+          _restorePending = false;
+          break;
+      }
+      if (purchase.pendingCompletePurchase) {
+        await InAppPurchase.instance.completePurchase(purchase);
+      }
+    }
+    notifyListeners();
+  }
+
+  Future<void> _grantProEntitlement() async {
+    final prefs = await SharedPreferences.getInstance();
+    _isProUnlocked = true;
+    await prefs.setBool(_proKey, true);
   }
 
   Future<void> _updateStreak(SharedPreferences prefs) async {
@@ -193,13 +343,6 @@ class ProService extends ChangeNotifier {
     return uniqueDays.length;
   }
 
-  Future<void> unlockPro() async {
-    final prefs = await SharedPreferences.getInstance();
-    _isProUnlocked = true;
-    await prefs.setBool(_proKey, true);
-    notifyListeners();
-  }
-
   Future<void> incrementCardsMastered() async {
     final prefs = await SharedPreferences.getInstance();
     _cardsMastered++;
@@ -207,9 +350,23 @@ class ProService extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Simulate restore purchases
-  Future<bool> restorePurchases() async {
-    await Future.delayed(const Duration(seconds: 1));
-    return false;
+  Future<void> restorePurchases() async {
+    if (kIsWeb || !_storeAvailable) {
+      _purchaseError = 'Purchase restoration is unavailable on this device.';
+      notifyListeners();
+      return;
+    }
+    _purchaseError = null;
+    _restorePending = true;
+    notifyListeners();
+    try {
+      await InAppPurchase.instance.restorePurchases();
+      _restorePending = false;
+      notifyListeners();
+    } catch (_) {
+      _restorePending = false;
+      _purchaseError = 'Could not restore purchases. Please try again.';
+      notifyListeners();
+    }
   }
 }

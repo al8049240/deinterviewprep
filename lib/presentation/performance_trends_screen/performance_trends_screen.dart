@@ -28,8 +28,10 @@ class PerformanceTrendsScreen extends StatefulWidget {
 }
 
 class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
+  static const int _attemptDisplayLimit = 50;
   final PerformanceService _service = PerformanceService();
   List<QuizAttempt> _attempts = [];
+  List<QuizAttempt> _skillAttempts = [];
   List<QuizUserAnswer> _userAnswers = [];
   bool _attemptsLoading = false;
 
@@ -65,7 +67,8 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
       final answers = await StatisticsRepository.instance.fetchUserAnswers();
       if (mounted) {
         setState(() {
-          _attempts = attempts;
+          _attempts = attempts.take(_attemptDisplayLimit).toList();
+          _skillAttempts = attempts;
           _userAnswers = answers;
           _attemptsLoading = false;
         });
@@ -211,15 +214,24 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
   }
 
   Map<String, double> get _topicAccuracy {
-    final Map<String, List<double>> grouped = {};
-    for (final s in _service.sessions) {
-      if (s.totalQuestions > 0) {
-        grouped.putIfAbsent(s.topicName, () => []).add(s.accuracyPercent);
-      }
+    final correctByTopic = <String, int>{};
+    final questionsByTopic = <String, int>{};
+    for (final attempt in _skillAttempts) {
+      if (attempt.totalQuestions <= 0) continue;
+      correctByTopic.update(
+        attempt.topicName,
+        (value) => value + attempt.correctAnswers,
+        ifAbsent: () => attempt.correctAnswers,
+      );
+      questionsByTopic.update(
+        attempt.topicName,
+        (value) => value + attempt.totalQuestions,
+        ifAbsent: () => attempt.totalQuestions,
+      );
     }
-    return grouped.map((topic, values) {
-      final avg = values.reduce((a, b) => a + b) / values.length;
-      return MapEntry(topic, avg);
+    return questionsByTopic.map((topic, totalQuestions) {
+      final correct = correctByTopic[topic] ?? 0;
+      return MapEntry(topic, correct / totalQuestions * 100);
     });
   }
 
@@ -415,25 +427,7 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
               _ProfileHeaderCard(onSignInTap: _openAuthScreen),
               const SizedBox(height: 20),
 
-              // 2. Statistics Section Title
-              _SectionTitle(title: 'Statistics', icon: Icons.bar_chart_rounded),
-              const SizedBox(height: 12),
-
-              // 3. Stats Grid
-              _StatsGrid(
-                totalXP: _totalXP,
-                todayXP: _todayXP,
-                totalTime: _totalStudyTime,
-                todayTime: _todayStudyTime,
-                overallAccuracy: _overallAccuracy,
-                activeTopics: _activeTopics,
-                onXpTap: _showXpDialog,
-                onTimeTap: _showTimeDialog,
-                onAccuracyTap: _showAccuracyDialog,
-              ),
-              const SizedBox(height: 24),
-
-              // 4. Skills Progress
+              // 2. Skills Progress
               _SectionTitle(
                 title: 'Skills Progress',
                 icon: Icons.military_tech_rounded,
@@ -442,7 +436,7 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
               _SkillBadgesRow(topicAccuracy: _topicAccuracy),
               const SizedBox(height: 24),
 
-              // 5. My Attempts (grouped by topic)
+              // 3. My Attempts (grouped by topic)
               _SectionTitle(title: 'My Attempts', icon: Icons.history_rounded),
               const SizedBox(height: 12),
               _attemptsLoading
@@ -1568,56 +1562,56 @@ class _SkillBadgesRow extends StatelessWidget {
 
   const _SkillBadgesRow({required this.topicAccuracy});
 
-  static const _skills = [
-    _SkillData(
-      'SQL',
-      Icons.storage_rounded,
-      Color(0xFF1565C0),
-      Color(0xFFE3F2FD),
-      0.85,
-    ),
-    _SkillData(
-      'Python',
-      Icons.code_rounded,
-      Color(0xFF2E7D32),
-      Color(0xFFE8F5E9),
-      0.70,
-    ),
-    _SkillData(
-      'ETL',
-      Icons.sync_alt_rounded,
-      Color(0xFF6A1B9A),
-      Color(0xFFF3E5F5),
-      0.55,
-    ),
-    _SkillData(
-      'Spark',
-      Icons.bolt_rounded,
-      Color(0xFFE65100),
-      Color(0xFFFFF3E0),
-      0.40,
-    ),
-    _SkillData(
-      'Kafka',
-      Icons.stream_rounded,
-      Color(0xFF00695C),
-      Color(0xFFE0F2F1),
-      0.30,
-    ),
-  ];
+  _SkillData _skillFor(MapEntry<String, double> entry) {
+    final lower = entry.key.toLowerCase();
+    if (lower.contains('sql')) {
+      return _SkillData(entry.key, Icons.storage_rounded,
+          const Color(0xFF1565C0), const Color(0xFFE3F2FD), entry.value / 100);
+    }
+    if (lower.contains('python')) {
+      return _SkillData(entry.key, Icons.code_rounded,
+          const Color(0xFF2E7D32), const Color(0xFFE8F5E9), entry.value / 100);
+    }
+    if (lower.contains('spark')) {
+      return _SkillData(entry.key, Icons.bolt_rounded,
+          const Color(0xFFE65100), const Color(0xFFFFF3E0), entry.value / 100);
+    }
+    if (lower.contains('kafka')) {
+      return _SkillData(entry.key, Icons.stream_rounded,
+          const Color(0xFF00695C), const Color(0xFFE0F2F1), entry.value / 100);
+    }
+    return _SkillData(entry.key, Icons.school_rounded,
+        const Color(0xFF6A1B9A), const Color(0xFFF3E5F5), entry.value / 100);
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (topicAccuracy.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Text(
+          'Complete a quiz to see your skill progress.',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.dmSans(fontSize: 13, color: Colors.grey.shade500),
+        ),
+      );
+    }
+    final skills = topicAccuracy.entries.map(_skillFor).toList()
+      ..sort((a, b) => b.progress.compareTo(a.progress));
     return SizedBox(
       height: 130,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        itemCount: _skills.length,
+        itemCount: skills.length,
         separatorBuilder: (_, __) => const SizedBox(width: 12),
         itemBuilder: (context, i) {
-          final skill = _skills[i];
-          final accuracy = topicAccuracy[skill.name];
-          final isMastered = accuracy != null && accuracy >= 80.0;
+          final skill = skills[i];
+          final isMastered = skill.progress >= 0.8;
           return _SkillBadgeCard(skill: skill, isMastered: isMastered);
         },
       ),
@@ -1707,51 +1701,28 @@ class _SkillBadgeCard extends StatelessWidget {
               fontWeight: FontWeight.w700,
               color: const Color(0xFF1A1A1A),
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 4),
-          if (isMastered)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF8E1),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('🔥', style: TextStyle(fontSize: 8)),
-                  const SizedBox(width: 2),
-                  Text(
-                    'Mastered',
-                    style: GoogleFonts.dmSans(
-                      fontSize: 8,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFFF9A825),
-                    ),
-                  ),
-                ],
-              ),
-            )
-          else ...[
-            ClipRRect(
-              borderRadius: BorderRadius.circular(3),
-              child: LinearProgressIndicator(
-                value: skill.progress,
-                minHeight: 4,
-                backgroundColor: const Color(0xFFEEEEEE),
-                valueColor: AlwaysStoppedAnimation<Color>(skill.color),
-              ),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: LinearProgressIndicator(
+              value: skill.progress.clamp(0.0, 1.0),
+              minHeight: 4,
+              backgroundColor: const Color(0xFFEEEEEE),
+              valueColor: AlwaysStoppedAnimation<Color>(skill.color),
             ),
-            const SizedBox(height: 3),
-            Text(
-              '${(skill.progress * 100).toInt()}%',
-              style: GoogleFonts.dmSans(
-                fontSize: 9,
-                color: skill.color,
-                fontWeight: FontWeight.w600,
-              ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            '${(skill.progress * 100).round()}%',
+            style: GoogleFonts.dmSans(
+              fontSize: 9,
+              color: skill.color,
+              fontWeight: FontWeight.w600,
             ),
-          ],
+          ),
         ],
       ),
     );

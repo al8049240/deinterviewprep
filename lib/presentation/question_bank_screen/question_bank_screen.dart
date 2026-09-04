@@ -4,9 +4,11 @@ import 'package:provider/provider.dart';
 import '../../theme/app_theme.dart';
 import '../../services/auth_service.dart';
 import '../../services/supabase_service.dart';
+import '../../services/pro_service.dart';
 import '../../providers/bookmark_provider.dart';
 import '../bookmarks_screen/bookmarks_screen.dart';
 import '../performance_trends_screen/performance_trends_screen.dart';
+import '../paywall_screen/paywall_screen.dart';
 
 class RealCaseScenario {
   final String id;
@@ -86,6 +88,7 @@ class QuestionBankScreen extends StatefulWidget {
 
 class _QuestionBankScreenState extends State<QuestionBankScreen> {
   final SupabaseService _supabase = SupabaseService.instance;
+  final ProService _proService = ProService();
 
   List<RealCaseScenario> _allScenarios = [];
   bool _isLoading = true;
@@ -106,6 +109,8 @@ class _QuestionBankScreenState extends State<QuestionBankScreen> {
   @override
   void initState() {
     super.initState();
+    _proService.init();
+    _proService.addListener(_onProChanged);
     _searchController.addListener(() {
       setState(() {
         _searchQuery = _searchController.text.trim().toLowerCase();
@@ -117,8 +122,22 @@ class _QuestionBankScreenState extends State<QuestionBankScreen> {
 
   @override
   void dispose() {
+    _proService.removeListener(_onProChanged);
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _onProChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _showPaywall() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const PaywallScreen(),
+    );
   }
 
   Future<void> _loadScenarios() async {
@@ -231,6 +250,64 @@ class _QuestionBankScreenState extends State<QuestionBankScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_proService.isProUnlocked) {
+      return Scaffold(
+        backgroundColor: AppTheme.backgroundLight,
+        appBar: AppBar(
+          title: Text(
+            'Real Case Scenario',
+            style: GoogleFonts.dmSans(
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
+          ),
+          backgroundColor: AppTheme.primary,
+          iconTheme: const IconThemeData(color: Colors.white),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.lock_rounded,
+                  size: 64,
+                  color: AppTheme.secondary,
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  'Real Case Scenarios are locked',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.dmSans(
+                    fontSize: 21,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF1A1A1A),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Unlock Serious Mode to access the complete real-world scenario library.',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.dmSans(
+                    fontSize: 14,
+                    height: 1.5,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(height: 22),
+                ElevatedButton.icon(
+                  onPressed: _showPaywall,
+                  icon: const Icon(Icons.workspace_premium_rounded),
+                  label: const Text('Unlock Serious Mode'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Consumer<BookmarkProvider>(
       builder: (context, bookmarkProvider, _) {
         final filtered = _filteredScenarios;
@@ -469,6 +546,7 @@ class _QuestionBankScreenState extends State<QuestionBankScreen> {
                             scenario: scenario,
                             isExpanded: isExpanded,
                             isBookmarked: isBookmarked,
+                            isLocked: false,
                             onTap: () => setState(() {
                               _expandedIndex = isExpanded ? null : i;
                             }),
@@ -542,6 +620,7 @@ class _ScenarioCard extends StatelessWidget {
   final bool isBookmarked;
   final VoidCallback onTap;
   final VoidCallback onBookmark;
+  final bool isLocked;
 
   const _ScenarioCard({
     required this.scenario,
@@ -549,6 +628,7 @@ class _ScenarioCard extends StatelessWidget {
     required this.isBookmarked,
     required this.onTap,
     required this.onBookmark,
+    required this.isLocked,
   });
 
   Color get _categoryColor {
@@ -663,6 +743,14 @@ class _ScenarioCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 8),
+                    if (isLocked) ...[
+                      const Icon(
+                        Icons.lock_rounded,
+                        size: 21,
+                        color: AppTheme.secondary,
+                      ),
+                      const SizedBox(width: 8),
+                    ],
                     GestureDetector(
                       onTap: onBookmark,
                       child: Icon(

@@ -779,6 +779,88 @@ final List<FlashcardModel> sampleFlashcards = [
         'Pattern:\n1. Add columns: effective_date, expiry_date (default 9999-12-31), is_current\n2. On change: Close old row (expiry_date = yesterday, is_current = false), insert new row\n3. Point-in-time query: JOIN ON id = id AND event_date BETWEEN effective_date AND expiry_date\n4. At scale: Use Delta Lake MERGE for atomic close-and-insert\n5. Performance: Partition by is_current — most queries only need current rows',
     category: 'System Design',
   ),
+
+  // Additional production-focused cards
+  FlashcardModel(
+    id: 'fc101',
+    front: 'What is the small-files problem in a data lake?',
+    back:
+        'Thousands of tiny files create excessive metadata, listing, and task-scheduling overhead. Compact them into target-sized Parquet files, batch writes, and use table maintenance such as Iceberg rewrite_data_files or Delta OPTIMIZE.',
+    category: 'Big Data',
+    tags: ['Data Lake', 'Parquet', 'Performance'],
+  ),
+  FlashcardModel(
+    id: 'fc102',
+    front: 'How does an Apache Iceberg snapshot enable time travel?',
+    back:
+        'Each commit creates an immutable snapshot pointing to manifest files and data files. Readers can select a snapshot ID or timestamp without copying the underlying data.',
+    category: 'Data Lake',
+    tags: ['Iceberg', 'Time Travel', 'ACID'],
+  ),
+  FlashcardModel(
+    id: 'fc103',
+    front: 'What does exactly-once processing actually require?',
+    back:
+        'A replayable source, deterministic processing or tracked state, and transactional or idempotent sinks. A framework checkpoint alone cannot guarantee exactly-once behavior in an external database.',
+    category: 'Streaming',
+    tags: ['Kafka', 'Flink', 'Reliability'],
+  ),
+  FlashcardModel(
+    id: 'fc104',
+    front: 'What is a data contract?',
+    back:
+        'A versioned agreement between producers and consumers covering schema, semantics, ownership, quality expectations, and compatibility rules. It makes breaking changes explicit and testable.',
+    category: 'Data Governance',
+    tags: ['Schema', 'Quality', 'Ownership'],
+  ),
+  FlashcardModel(
+    id: 'fc105',
+    front: 'When should you use a broadcast join in Spark?',
+    back:
+        'When one side of the join is small enough to fit safely in every executor. Broadcasting avoids shuffling the large table, but can cause executor OOM if the estimate is wrong.',
+    category: 'Apache Spark',
+    tags: ['Spark', 'Join', 'Optimization'],
+  ),
+  FlashcardModel(
+    id: 'fc106',
+    front: 'What is the difference between Airflow retries and backfills?',
+    back:
+        'A retry reruns a failed task instance for the same logical interval. A backfill creates or reruns workflow intervals for historical dates, typically after fixing logic or loading missing data.',
+    category: 'Apache Airflow',
+    tags: ['Airflow', 'Operations', 'Recovery'],
+  ),
+  FlashcardModel(
+    id: 'fc107',
+    front: 'Why is an idempotency key useful in a pipeline?',
+    back:
+        'It gives repeated delivery of the same logical event a stable identity. The sink can upsert or reject a duplicate, making retries safe under at-least-once delivery.',
+    category: 'System Design',
+    tags: ['Idempotency', 'Retries', 'Reliability'],
+  ),
+  FlashcardModel(
+    id: 'fc108',
+    front: 'What is column pruning?',
+    back:
+        'The query engine reads only referenced columns from a columnar format such as Parquet. It reduces I/O and memory; SELECT * prevents much of this benefit.',
+    category: 'SQL',
+    tags: ['Parquet', 'Query Optimization'],
+  ),
+  FlashcardModel(
+    id: 'fc109',
+    front: 'What is a late-arriving dimension?',
+    back:
+        'A fact arrives before its matching dimension record. Common handling uses an inferred placeholder dimension row, then updates it when the real attributes arrive.',
+    category: 'Data Modeling',
+    tags: ['Warehouse', 'Dimensions', 'ETL'],
+  ),
+  FlashcardModel(
+    id: 'fc110',
+    front: 'What should a pipeline freshness SLO measure?',
+    back:
+        'The delay between the newest source event expected and the newest trustworthy data available to consumers. Measure it end to end, not merely whether the scheduler succeeded.',
+    category: 'Data Reliability',
+    tags: ['SLO', 'Observability', 'Freshness'],
+  ),
 ];
 
 final List<InterviewQuestionModel> sampleInterviewQuestions = [
@@ -1462,5 +1544,115 @@ The interview insight: the key to fraud detection is feature freshness. A model 
     difficulty: 'Lead',
     isPro: true,
     tags: ['Kafka', 'Flink', 'ML', 'Real-time'],
+  ),
+  const InterviewQuestionModel(
+    id: 'iq19',
+    title: 'Design a Reliable Incremental ELT Pipeline',
+    description:
+        'A daily orders pipeline currently reloads 500 million rows. Design an incremental approach that supports updates, deletes, retries, and late-arriving records.',
+    answer:
+        '''I would capture a stable change cursor from the source, land changes immutably, and merge them into the target.
+
+First, I would prefer CDC from the database log because an updated_at filter can miss deletes and tied timestamps. Each landed event would retain its operation, source position, event time, and ingestion time.
+
+The transform would deduplicate by primary key and source position, then use a transactional MERGE: insert new keys, update changed keys, and apply deletes according to the analytical retention policy. I would keep the source high-water mark in a control table and advance it only after the target commit succeeds.
+
+Retries must be idempotent. A run can replay the same landing files because the merge key and source position prevent duplicate effects. I would also reprocess a rolling lookback window for late events and reconcile daily counts, sums, and sampled keys against the source.
+
+The main interview point is that incremental loading is not just filtering by time. Correctness requires explicit handling for deletes, late data, atomic checkpointing, and safe replay.''',
+    category: 'ETL',
+    difficulty: 'Mid',
+    isPro: true,
+    tags: ['CDC', 'MERGE', 'Idempotency', 'Late Data'],
+  ),
+  const InterviewQuestionModel(
+    id: 'iq20',
+    title: 'Resolve Severe Data Skew in a Spark Join',
+    description:
+        'A Spark join has 2,000 tasks, but one task runs for 70 minutes while the others finish in under two minutes. How do you diagnose and fix it?',
+    answer:
+        '''I would confirm skew in the Spark UI by comparing shuffle read size, records, spill, and duration across tasks. Then I would identify the hot join keys rather than blindly adding executors.
+
+If one side is genuinely small, I would broadcast it and remove the shuffle. Otherwise I would enable Adaptive Query Execution and skew-join handling. For a small number of extreme keys, I would salt those keys on the large side, duplicate only their matching rows on the other side, join, and remove the salt afterward.
+
+I would handle null or placeholder keys separately because they often create a single enormous partition. I would also verify that partition statistics are current and that the join keys have compatible types.
+
+The result is validated using output row counts and key-level aggregates. Repartitioning alone changes the number of buckets, but it does not solve a single dominant key; the fix must address the distribution.''',
+    category: 'Apache Spark',
+    difficulty: 'Senior',
+    isPro: true,
+    tags: ['Spark', 'Skew', 'AQE', 'Salting'],
+  ),
+  const InterviewQuestionModel(
+    id: 'iq21',
+    title: 'Migrate a Kafka Event Schema Without Downtime',
+    description:
+        'A producer must split customer_name into first_name and last_name while dozens of consumers are running. Plan a safe migration.',
+    answer:
+        '''I would make the first schema change backward compatible: add nullable first_name and last_name while retaining customer_name. The producer would dual-write all three fields and the schema registry would reject incompatible deployments.
+
+Consumers would migrate independently to prefer the new fields and fall back to customer_name. I would track consumer versions and field usage so we know when the old field is no longer read.
+
+After the migration window, I would stop populating customer_name but keep it optional for one more release. Removing it is a separate major-version change, potentially on a new topic if compatibility policy does not allow removal.
+
+I would test old-producer/new-consumer and new-producer/old-consumer combinations before rollout. The key is expand, migrate, and contract—not changing every producer and consumer simultaneously.''',
+    category: 'Streaming',
+    difficulty: 'Mid',
+    isPro: true,
+    tags: ['Kafka', 'Schema Registry', 'Compatibility'],
+  ),
+  const InterviewQuestionModel(
+    id: 'iq22',
+    title: 'Build Data Quality Checks for a Revenue Table',
+    description:
+        'Executives use a daily revenue table for reporting. What checks and operating process would you implement?',
+    answer:
+        '''I would cover five layers: schema, completeness, validity, consistency, and freshness.
+
+Schema checks catch missing columns and incompatible types. Completeness checks compare order counts and revenue with the source and recent baselines. Validity checks enforce non-negative amounts, supported currencies, and required keys. Consistency checks verify that daily revenue equals the sum of its components and that foreign keys resolve. Freshness checks measure the newest trustworthy business event, not only the DAG completion time.
+
+Each rule needs an owner, severity, threshold, and response. A duplicate primary key or broken reconciliation blocks publication; a small volume anomaly can warn without stopping the pipeline. Failed blocking checks leave the prior certified partition in place and alert the on-call owner.
+
+I would publish results with lineage and run metadata, then review noisy thresholds regularly. Good data quality is an operating system with ownership and response—not a pile of assertions.''',
+    category: 'Data Quality',
+    difficulty: 'Mid',
+    isPro: false,
+    tags: ['Testing', 'SLO', 'Reconciliation', 'Observability'],
+  ),
+  const InterviewQuestionModel(
+    id: 'iq23',
+    title: 'Choose Between Star Schema and One Big Table',
+    description:
+        'A BI team wants one denormalized table for speed, while the platform team proposes a dimensional model. How do you decide?',
+    answer:
+        '''I would start from workload and ownership. A star schema provides reusable conformed dimensions, clear grain, governed metrics, and efficient filtering across multiple fact tables. It is usually the durable warehouse model.
+
+A one-big-table can simplify a narrow, high-volume dashboard and avoid runtime joins, but it repeats dimension attributes, increases storage and update complexity, and makes metric drift more likely.
+
+My usual design is a dimensional core with purpose-built denormalized marts or materialized views for performance-critical consumers. That preserves governance while giving BI users a simple interface.
+
+Before deciding, I would define grain, query patterns, update frequency, slowly changing dimension needs, and measured query cost. The answer is rarely ideological: model centrally for consistency and serve selectively for speed.''',
+    category: 'Data Modeling',
+    difficulty: 'Senior',
+    isPro: true,
+    tags: ['Star Schema', 'Warehouse', 'BI', 'Modeling'],
+  ),
+  const InterviewQuestionModel(
+    id: 'iq24',
+    title: 'Recover an Airflow Pipeline Without Duplicating Data',
+    description:
+        'An Airflow DAG loaded half a partition before failing. A retry would duplicate rows. How would you recover it and prevent recurrence?',
+    answer:
+        '''I would pause downstream publication, identify the exact run and target partition, and determine whether the sink supports transactions. For immediate recovery, I would rebuild the affected partition into a staging table, validate it, then atomically replace or merge the final partition.
+
+The permanent fix is idempotent task design. Each run writes to a run-specific staging location. The final step performs a transactional MERGE or partition swap keyed by the business primary key. Only after that commit succeeds does the control table advance and the data become visible.
+
+Airflow retries should repeat the same logical interval and input snapshot. I would avoid append-only writes unless records carry an idempotency key and the sink enforces it. Finally, I would add a duplicate-key test and a row-count reconciliation before publication.
+
+Airflow can retry orchestration, but the data operation itself must define safe replay semantics.''',
+    category: 'Apache Airflow',
+    difficulty: 'Mid',
+    isPro: true,
+    tags: ['Airflow', 'Idempotency', 'Recovery', 'MERGE'],
   ),
 ];

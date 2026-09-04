@@ -8,6 +8,7 @@ import '../../services/quiz_service.dart';
 import '../../theme/app_theme.dart';
 import '../bookmarks_screen/bookmarks_screen.dart';
 import '../performance_trends_screen/performance_trends_screen.dart';
+import '../paywall_screen/paywall_screen.dart';
 import './widgets/category_filter_widget.dart';
 import './widgets/customize_quiz_sheet_widget.dart';
 import './widgets/pro_banner_widget.dart';
@@ -105,7 +106,7 @@ const List<Map<String, dynamic>> _kTopicMeta = [
     'name': 'Data Modeling',
     'category': 'Database',
     'iconName': 'schema',
-    'isPro': false,
+    'isPro': true,
     'iconColor': 0xFF4527A0,
   },
   {
@@ -125,6 +126,33 @@ const List<Map<String, dynamic>> _kTopicMeta = [
     'iconName': 'cloud',
     'isPro': true,
     'iconColor': 0xFF0277BD,
+  },
+  {
+    'dbName': 'Microsoft Azure Data Engineer Associate',
+    'id': 'azure_data_engineer_dp203',
+    'name': 'Azure Data Engineer Associate (DP-203)',
+    'category': 'Certifications',
+    'iconName': 'verified',
+    'isPro': true,
+    'iconColor': 0xFF0078D4,
+  },
+  {
+    'dbName': 'Google Cloud Professional Data Engineer',
+    'id': 'google_cloud_pde',
+    'name': 'Google Cloud Professional Data Engineer (PDE)',
+    'category': 'Certifications',
+    'iconName': 'verified',
+    'isPro': true,
+    'iconColor': 0xFF4285F4,
+  },
+  {
+    'dbName': 'AWS Certified Data Engineer Associate',
+    'id': 'aws_data_engineer_dea_c01',
+    'name': 'AWS Certified Data Engineer – Associate (DEA-C01)',
+    'category': 'Certifications',
+    'iconName': 'verified',
+    'isPro': true,
+    'iconColor': 0xFFFF9900,
   },
   {
     'dbName': 'Docker & DevOps',
@@ -172,6 +200,7 @@ class _TopicsListScreenState extends State<TopicsListScreen>
     'Big Data',
     'Streaming',
     'Cloud',
+    'Certifications',
     'DevOps',
   ];
 
@@ -286,6 +315,7 @@ class _TopicsListScreenState extends State<TopicsListScreen>
       'cloud': Icons.cloud_rounded,
       'inventory_2': Icons.inventory_2_rounded,
       'dataset': Icons.dataset_rounded,
+      'verified': Icons.verified_rounded,
     };
     return map[iconName] ?? Icons.quiz_rounded;
   }
@@ -295,28 +325,13 @@ class _TopicsListScreenState extends State<TopicsListScreen>
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _TopicLockedSheet(
-        topicName: topic.name,
-        onUnlock: () async {
-          await _proService.unlockPro();
-          if (mounted) {
-            setState(() => _isProUnlocked = true);
-            Navigator.pop(context);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  '🎉 Serious Mode unlocked! All topics are now accessible.',
-                  style: GoogleFonts.dmSans(fontWeight: FontWeight.w600),
-                ),
-                backgroundColor: AppTheme.primary,
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-            _navigateToSubtopics(topic);
-          }
-        },
-      ),
-    );
+      builder: (_) => const PaywallScreen(),
+    ).then((unlocked) {
+      if (unlocked == true && mounted) {
+        setState(() => _isProUnlocked = true);
+        _navigateToSubtopics(topic);
+      }
+    });
   }
 
   void _showCustomizeSheet() {
@@ -363,7 +378,15 @@ class _TopicsListScreenState extends State<TopicsListScreen>
               onSelected: (cat) => setState(() => _selectedCategory = cat),
             ),
             const ProBannerWidget(),
-            _BuildCustomMockBanner(),
+            _BuildCustomMockBanner(
+              isLocked: !_isProUnlocked,
+              onLocked: () => showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (_) => const PaywallScreen(),
+              ),
+            ),
             Expanded(
               child: filtered.isEmpty
                   ? _buildEmptyState(theme)
@@ -578,13 +601,13 @@ class _TopicLockedSheetState extends State<_TopicLockedSheet> {
   Widget build(BuildContext context) {
     const tableRows = [
       ['Feature', 'Chill', 'Serious'],
-      ['Core Flashcards', '10', '150+'],
-      ['Interview Questions', '2 free', '150+'],
-              ['Data Dev Stories', '✗', '✓'],
-      ['Code Playground', '✗', '✓'],
+      ['Flashcards', 'Limited', '110+'],
+      ['Interview Scenarios', 'Limited', '24+'],
+      ['Data Dev Stories', '✗', '✓'],
+      ['Interview Code Library', '✗', '✓'],
       ['SQL/Python Practice', '✗', '✓'],
-      ['Cheatsheets & Guides', '✗', '✓'],
-      ['Offline Mode', '✗', '✓'],
+      ['Custom Quizzes', '✗', '✓'],
+      ['Progress Statistics', 'Locked', 'Full'],
       ['All Difficulty Levels', '✗', '✓'],
     ];
 
@@ -800,7 +823,7 @@ class _TopicLockedSheetState extends State<_TopicLockedSheet> {
                           ),
                         )
                       : Text(
-                          '\$19.99 — One-time payment • Lifetime access',
+                          '\$9.99 launch offer — Lifetime access',
                           style: GoogleFonts.dmSans(
                             fontSize: 14,
                             fontWeight: FontWeight.w700,
@@ -829,18 +852,28 @@ class _TopicLockedSheetState extends State<_TopicLockedSheet> {
 }
 
 class _BuildCustomMockBanner extends StatelessWidget {
-  const _BuildCustomMockBanner();
+  final bool isLocked;
+  final VoidCallback onLocked;
+
+  const _BuildCustomMockBanner({
+    required this.isLocked,
+    required this.onLocked,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
       child: GestureDetector(
-        onTap: () => context.push(AppRoutes.customQuizBuilderScreen),
+        onTap: isLocked
+            ? onLocked
+            : () => context.push(AppRoutes.customQuizBuilderScreen),
         child: Container(
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF00695C), Color(0xFF00897B)],
+            gradient: LinearGradient(
+              colors: isLocked
+                  ? [Colors.grey.shade600, Colors.grey.shade500]
+                  : const [Color(0xFF00695C), Color(0xFF00897B)],
               begin: Alignment.centerLeft,
               end: Alignment.centerRight,
             ),
@@ -892,6 +925,8 @@ class _BuildCustomMockBanner extends StatelessWidget {
                   ],
                 ),
               ),
+              if (isLocked)
+                const Icon(Icons.lock_rounded, color: Colors.white, size: 20),
               const Icon(
                 Icons.arrow_forward_ios_rounded,
                 color: Colors.white,

@@ -76,16 +76,17 @@ class StatisticsRepository {
 
   // ── Fetch All Attempts ────────────────────────────────────────────────────
 
-  Future<List<QuizAttempt>> fetchAttempts({String? userId}) async {
+  Future<List<QuizAttempt>> fetchAttempts({String? userId, int? limit}) async {
     final targetUserId = userId ?? _client.auth.currentUser?.id;
     if (targetUserId == null) return [];
 
-    final response = await _client
+    final query = _client
         .schema(_schema)
         .from(_attemptsTable)
         .select()
         .eq('user_id', targetUserId)
         .order('created_at', ascending: false);
+    final response = limit == null ? await query : await query.limit(limit);
 
     return (response as List)
         .map((e) => QuizAttempt.fromJson(e as Map<String, dynamic>))

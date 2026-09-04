@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../theme/app_theme.dart';
+
 import '../../services/pro_service.dart';
+import '../../theme/app_theme.dart';
 
 class PaywallScreen extends StatefulWidget {
   const PaywallScreen({super.key});
@@ -12,338 +13,293 @@ class PaywallScreen extends StatefulWidget {
 
 class _PaywallScreenState extends State<PaywallScreen> {
   final ProService _proService = ProService();
-  bool _isLoading = false;
-  bool _isRestoring = false;
 
-  Future<void> _unlockPro() async {
-    setState(() => _isLoading = true);
-    // Simulate IAP purchase flow
-    await Future.delayed(const Duration(milliseconds: 800));
-    await _proService.unlockPro();
-    if (mounted) {
-      setState(() => _isLoading = false);
-      Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '🎉 Serious Mode unlocked! Enjoy lifetime access.',
-            style: GoogleFonts.dmSans(fontWeight: FontWeight.w600),
-          ),
-          backgroundColor: AppTheme.primary,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
+  @override
+  void initState() {
+    super.initState();
+    _proService.addListener(_onPurchaseChanged);
+    _proService.init();
   }
 
-  Future<void> _restorePurchases() async {
-    setState(() => _isRestoring = true);
-    final restored = await _proService.restorePurchases();
-    if (mounted) {
-      setState(() => _isRestoring = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            restored ? '✅ Purchase restored!' : 'No previous purchase found.',
-            style: GoogleFonts.dmSans(),
-          ),
-          backgroundColor: restored ? AppTheme.primary : Colors.grey.shade700,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+  @override
+  void dispose() {
+    _proService.removeListener(_onPurchaseChanged);
+    super.dispose();
+  }
+
+  void _onPurchaseChanged() {
+    if (!mounted) return;
+    if (_proService.isProUnlocked) {
+      Navigator.of(context).pop(true);
+    } else {
+      setState(() {});
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final busy = _proService.purchasePending || _proService.restorePending;
+    final price = _proService.displayPrice;
+
     return Container(
-      height: MediaQuery.of(context).size.height * 0.88,
+      height: MediaQuery.sizeOf(context).height * 0.9,
       decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      child: Column(
-        children: [
-          // Handle
-          Container(
-            margin: const EdgeInsets.only(top: 12),
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: Colors.grey.shade300,
-              borderRadius: BorderRadius.circular(2),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-          ),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  // Header
-                  Container(
-                    width: 72,
-                    height: 72,
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [AppTheme.primary, AppTheme.primaryLight],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Icon(
-                      Icons.workspace_premium,
-                      color: Colors.white,
-                      size: 36,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Unlock Serious Mode 🗿',
-                    style: GoogleFonts.dmSans(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF1A1A1A),
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  Text(
-                    'Pay Once, Own Forever',
-                    style: GoogleFonts.dmSans(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.secondary,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'No recurring subscriptions. Prepare for your Data Engineering interviews at your own pace.',
-                    style: GoogleFonts.dmSans(
-                      fontSize: 13,
-                      color: Colors.grey.shade600,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Comparison Table
-                  _ComparisonTable(),
-                  const SizedBox(height: 28),
-
-                  // Price CTA
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFFF9A825), Color(0xFFF57F17)],
-                      ),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Column(
-                      children: [
-                        Text(
-                          '\$19.99',
-                          style: GoogleFonts.dmSans(
-                            fontSize: 36,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                          ),
-                        ),
-                        Text(
-                          'One-time payment • Lifetime access',
-                          style: GoogleFonts.dmSans(
-                            fontSize: 13,
-                            color: Colors.white.withAlpha(220),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Unlock Button — orange/gold gradient
-                  SizedBox(
-                    width: double.infinity,
-                    child: DecoratedBox(
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 68,
+                      height: 68,
                       decoration: BoxDecoration(
                         gradient: const LinearGradient(
-                          colors: [Color(0xFFFF8C00), Color(0xFFFFB300)],
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
+                          colors: [AppTheme.primary, AppTheme.primaryLight],
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Icon(
+                        Icons.workspace_premium_rounded,
+                        color: Colors.white,
+                        size: 36,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      'Unlock Serious Mode',
+                      style: GoogleFonts.dmSans(
+                        fontSize: 23,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF1A1A1A),
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      'One payment. Lifetime access. No subscription.',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.dmSans(
+                        fontSize: 14,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                    if (ProService.isLaunchPromotion) ...[
+                      const SizedBox(height: 14),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF3E0),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          'LAUNCH OFFER • Regular price ${r'$14.99'}',
+                          style: GoogleFonts.dmSans(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: const Color(0xFFE65100),
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 22),
+                    const _FeatureList(),
+                    const SizedBox(height: 22),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFF9A825), Color(0xFFF57F17)],
                         ),
                         borderRadius: BorderRadius.circular(14),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFFFF8C00).withAlpha(80),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
+                      ),
+                      child: Column(
+                        children: [
+                          Text(
+                            price,
+                            style: GoogleFonts.dmSans(
+                              fontSize: 34,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                            ),
+                          ),
+                          Text(
+                            'one-time purchase • lifetime access',
+                            style: GoogleFonts.dmSans(
+                              fontSize: 12,
+                              color: Colors.white.withAlpha(225),
+                            ),
                           ),
                         ],
                       ),
+                    ),
+                    if (_proService.purchaseError != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        _proService.purchaseError!,
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.dmSans(
+                          fontSize: 12,
+                          color: Colors.red.shade700,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
                       child: ElevatedButton(
-                        onPressed: _isLoading ? null : _unlockPro,
+                        onPressed: busy || _proService.isLoadingStore
+                            ? null
+                            : _proService.purchaseLifetime,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.transparent,
-                          shadowColor: Colors.transparent,
+                          backgroundColor: const Color(0xFFFF8C00),
                           foregroundColor: Colors.white,
+                          disabledBackgroundColor: Colors.grey.shade300,
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(14),
                           ),
-                          elevation: 0,
                         ),
-                        child: _isLoading
+                        child: busy || _proService.isLoadingStore
                             ? const SizedBox(
-                                width: 20,
-                                height: 20,
+                                width: 21,
+                                height: 21,
                                 child: CircularProgressIndicator(
-                                  color: Colors.white,
                                   strokeWidth: 2,
+                                  color: Colors.white,
                                 ),
                               )
                             : Text(
-                                '\$19.99 — One-time payment • Lifetime access',
+                                'Unlock forever for $price',
                                 style: GoogleFonts.dmSans(
-                                  fontSize: 14,
+                                  fontSize: 15,
                                   fontWeight: FontWeight.w700,
-                                  color: Colors.white,
                                 ),
                               ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Restore Button
-                  TextButton(
-                    onPressed: _isRestoring ? null : _restorePurchases,
-                    child: _isRestoring
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Text(
-                            'Restore Purchases',
-                            style: GoogleFonts.dmSans(
-                              fontSize: 14,
-                              color: AppTheme.primary,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Secure payment • Instant unlock',
-                    style: GoogleFonts.dmSans(
-                      fontSize: 11,
-                      color: Colors.grey.shade500,
+                    TextButton(
+                      onPressed: busy ? null : _proService.restorePurchases,
+                      child: Text(
+                        _proService.restorePending
+                            ? 'Restoring…'
+                            : 'Restore purchase',
+                        style: GoogleFonts.dmSans(
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.primary,
+                        ),
+                      ),
                     ),
-                  ),
-                ],
+                    Text(
+                      'Payment is securely processed by Apple or Google.',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.dmSans(
+                        fontSize: 11,
+                        color: Colors.grey.shade500,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
-class _ComparisonTable extends StatelessWidget {
+class _FeatureList extends StatelessWidget {
+  const _FeatureList();
+
+  static const features = [
+    ('Full flashcard library', 'Practical concepts across core DE topics'),
+    (
+      'Full quiz library',
+      'All topics, difficulties, answers, and explanations',
+    ),
+    (
+      'Full Real Case Scenario library',
+      'Real-world architecture decisions, incidents, and trade-offs',
+    ),
+    ('Custom quiz builder', 'Create focused practice sessions by topic'),
+    (
+      'Interview Code Library',
+      'Useful SQL and Python patterns for technical interviews',
+    ),
+    (
+      'Monthly certification questions',
+      'New Azure, Google Cloud, and AWS Data Engineer practice questions',
+    ),
+    ('Data Dev Stories', 'Learn from production incidents and trade-offs'),
+    (
+      'Premium statistics and trends',
+      'Track accuracy, streaks, topic performance, and recent attempts',
+    ),
+  ];
+
   @override
   Widget build(BuildContext context) {
-    final rows = [
-      ['Feature', 'Chill', 'Serious'],
-      ['Core Flashcards', '10', '150+'],
-      ['Interview Questions', '2 free', '150+'],
-              ['Data Dev Stories', '✗', '✓'],
-      ['Code Playground', '✗', '✓'],
-      ['SQL/Python Practice', '✗', '✓'],
-      ['Cheatsheets & Guides', '✗', '✓'],
-      ['Offline Mode', '✗', '✓'],
-      ['All Difficulty Levels', '✗', '✓'],
-    ];
-
-    return Container(
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey.shade200),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        children: rows.asMap().entries.map((entry) {
-          final i = entry.key;
-          final row = entry.value;
-          final isHeader = i == 0;
-          return Container(
-            decoration: BoxDecoration(
-              color: isHeader ? AppTheme.primaryContainer : Colors.transparent,
-              borderRadius: i == 0
-                  ? const BorderRadius.vertical(top: Radius.circular(12))
-                  : i == rows.length - 1
-                  ? const BorderRadius.vertical(bottom: Radius.circular(12))
-                  : null,
-              border: i > 0
-                  ? Border(top: BorderSide(color: Colors.grey.shade100))
-                  : null,
+    return Column(
+      children: features
+          .map(
+            (feature) => Padding(
+              padding: const EdgeInsets.only(bottom: 13),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.check_circle_rounded,
+                    color: AppTheme.primary,
+                    size: 21,
+                  ),
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          feature.$1,
+                          style: GoogleFonts.dmSans(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF242424),
+                          ),
+                        ),
+                        Text(
+                          feature.$2,
+                          style: GoogleFonts.dmSans(
+                            fontSize: 12,
+                            height: 1.35,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            child: Row(
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: Text(
-                    row[0],
-                    style: GoogleFonts.dmSans(
-                      fontSize: 13,
-                      fontWeight: isHeader ? FontWeight.w700 : FontWeight.w400,
-                      color: isHeader
-                          ? AppTheme.primaryDark
-                          : const Color(0xFF333333),
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: Center(
-                    child: Text(
-                      row[1],
-                      style: GoogleFonts.dmSans(
-                        fontSize: 13,
-                        fontWeight: isHeader
-                            ? FontWeight.w700
-                            : FontWeight.w400,
-                        color: isHeader
-                            ? AppTheme.primaryDark
-                            : Colors.grey.shade600,
-                      ),
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: Center(
-                    child: Text(
-                      row[2],
-                      style: GoogleFonts.dmSans(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: isHeader
-                            ? AppTheme.primaryDark
-                            : row[2] == '✓'
-                            ? AppTheme.primary
-                            : row[2] == '✗'
-                            ? Colors.red.shade400
-                            : AppTheme.primary,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
-        }).toList(),
-      ),
+          )
+          .toList(),
     );
   }
 }

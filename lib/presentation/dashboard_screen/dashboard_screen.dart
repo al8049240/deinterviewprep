@@ -22,7 +22,6 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   final ProService _proService = ProService();
-  bool _isSeriousMode = false;
 
   @override
   void initState() {
@@ -70,12 +69,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _UnlockSeriousModeSheet(
-        onUnlock: () {
-          Navigator.pop(context);
-          setState(() => _isSeriousMode = true);
-        },
-      ),
+      builder: (_) => const PaywallScreen(),
     );
   }
 
@@ -126,7 +120,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                             Row(
                               children: [
-                                if (_isSeriousMode) ...[
+                                if (isPro) ...[
                                   // Serious Mode: show single gold badge only
                                   Container(
                                     padding: const EdgeInsets.symmetric(
@@ -249,7 +243,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   _QuickActionCard(
                     icon: Icons.style_rounded,
                     title: 'Continue Flashcards',
-                    subtitle: '$sampleFlashcardsCount cards available',
+                    subtitle: isPro
+                        ? '$sampleFlashcardsCount cards available'
+                        : '30 free cards • unlock the full library',
                     color: AppTheme.primary,
                     onTap: () => context.push(AppRoutes.flashcardsScreen),
                   ),
@@ -257,14 +253,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   _QuickActionCard(
                     icon: Icons.quiz_rounded,
                     title: 'Real Case Scenario',
-                    subtitle: 'Real-world data engineering cases',
-                    color: AppTheme.secondary,
-                    onTap: () => context.push(AppRoutes.questionBankScreen),
+                    subtitle: isPro
+                        ? 'Full real-world scenario library'
+                        : 'Serious Mode feature • unlock to access',
+                    color: isPro ? AppTheme.secondary : Colors.grey,
+                    onTap: isPro
+                        ? () => context.push(AppRoutes.questionBankScreen)
+                        : _showPaywall,
                   ),
                   const SizedBox(height: 10),
                   _QuickActionCard(
                     icon: Icons.code_rounded,
-                    title: 'Code Playground',
+                    title: 'Interview Code Library',
                     subtitle: isPro
                         ? 'SQL & Python practice'
                         : 'Serious Mode feature — unlock to access',
@@ -277,7 +277,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   _QuickActionCard(
                     icon: Icons.list_alt_rounded,
                     title: 'Explore Topics',
-                    subtitle: 'All quiz topics',
+                    subtitle: isPro
+                        ? 'All quiz topics'
+                        : 'Data Modeling and premium topics are locked',
                     color: const Color(0xFF6A1B9A),
                     onTap: () => context.go(AppRoutes.topicsListScreen),
                   ),
@@ -300,7 +302,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                   // ── Developer's Real Experiences Banner ─────────────────────
                   _DevExperiencesBannerCard(
-                    isSeriousMode: _isSeriousMode,
+                    isSeriousMode: isPro,
                     onUnlockTap: _showUnlockSeriousModeSheet,
                   ),
                   const SizedBox(height: 24),
@@ -411,7 +413,7 @@ class _UnlockSeriousModeSheet extends StatelessWidget {
                   elevation: 0,
                 ),
                 child: Text(
-                  '\$19.99 — One-time payment • Lifetime access',
+                  '\$9.99 launch offer — Lifetime access',
                   style: GoogleFonts.dmSans(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
@@ -443,13 +445,13 @@ class _UpgradeComparisonTable extends StatelessWidget {
   Widget build(BuildContext context) {
     const rows = [
       ['Feature', 'Chill', 'Serious'],
-      ['Core Flashcards', '10', '150+'],
-      ['Interview Questions', '2 free', '150+'],
-          ['Data Dev Stories', '✗', '✓'],
-      ['Code Playground', '✗', '✓'],
+      ['Flashcards', 'Limited', '110+'],
+      ['Interview Scenarios', 'Limited', '24+'],
+      ['Data Dev Stories', '✗', '✓'],
+      ['Interview Code Library', '✗', '✓'],
       ['SQL/Python Practice', '✗', '✓'],
-      ['Cheatsheets & Guides', '✗', '✓'],
-      ['Offline Mode', '✗', '✓'],
+      ['Custom Quizzes', '✗', '✓'],
+      ['Progress Statistics', 'Locked', 'Full'],
       ['All Difficulty Levels', '✗', '✓'],
     ];
 
@@ -629,7 +631,7 @@ class _DevExperiencesBannerCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-              'Data Dev Stories',
+                      'Data Dev Stories',
                       style: GoogleFonts.dmSans(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
@@ -1098,7 +1100,7 @@ class _UpgradeBanner extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Upgrade to Serious Mode — \$19.99',
+                    'Upgrade to Serious Mode — \$9.99 launch offer',
                     style: GoogleFonts.dmSans(
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
@@ -1200,11 +1202,12 @@ class _FreeTierCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final items = [
-      '10 Core Data Engineering Flashcards',
-      'SQL basics, ETL vs ELT, ACID compliance',
-      'Daily Streak & Habit Tracker',
-      '5 System Design Walkthroughs',
-      'Quiz topics with explanations & Pro Tips',
+      '30 interview flashcards',
+      'Free SQL, Python, Airflow, DevOps, and Big Data topics',
+      'Quiz answers, explanations, and Pro Tips',
+      'Skills Progress based on your real quiz history',
+      'Your 50 most recent attempts in Profile',
+      'Bookmarks, daily streak, and study reminders',
     ];
     return Container(
       padding: const EdgeInsets.all(16),

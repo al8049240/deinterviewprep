@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../theme/app_theme.dart';
+import '../../services/pro_service.dart';
 import '../dashboard_screen/dashboard_screen.dart';
 import '../bookmarks_screen/bookmarks_screen.dart';
 import '../performance_trends_screen/performance_trends_screen.dart';
 import '../statistics_screen/statistics_screen.dart';
+import '../paywall_screen/paywall_screen.dart';
 
 class MainScreen extends StatefulWidget {
   final int initialIndex;
@@ -18,11 +20,37 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   late int _currentIndex;
+  final ProService _proService = ProService();
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
+    _proService.addListener(_onProChanged);
+    _proService.init();
+  }
+
+  @override
+  void dispose() {
+    _proService.removeListener(_onProChanged);
+    super.dispose();
+  }
+
+  void _onProChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _onNavigationTap(int index) {
+    if (index == 2 && !_proService.isProUnlocked) {
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => const PaywallScreen(),
+      );
+      return;
+    }
+    setState(() => _currentIndex = index);
   }
 
   final List<Widget> _screens = const [
@@ -49,7 +77,7 @@ class _MainScreenState extends State<MainScreen> {
         ),
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
-          onTap: (index) => setState(() => _currentIndex = index),
+          onTap: _onNavigationTap,
           backgroundColor: Colors.white,
           selectedItemColor: AppTheme.primary,
           unselectedItemColor: const Color(0xFF9E9E9E),
@@ -63,20 +91,24 @@ class _MainScreenState extends State<MainScreen> {
           ),
           type: BottomNavigationBarType.fixed,
           elevation: 0,
-          items: const [
-            BottomNavigationBarItem(
+          items: [
+            const BottomNavigationBarItem(
               icon: Icon(Icons.home_rounded),
               label: 'Home',
             ),
-            BottomNavigationBarItem(
+            const BottomNavigationBarItem(
               icon: Icon(Icons.bookmark_rounded),
               label: 'Bookmarks',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.bar_chart_rounded),
+              icon: Icon(
+                _proService.isProUnlocked
+                    ? Icons.bar_chart_rounded
+                    : Icons.lock_rounded,
+              ),
               label: 'Stats',
             ),
-            BottomNavigationBarItem(
+            const BottomNavigationBarItem(
               icon: Icon(Icons.person_rounded),
               label: 'Profile',
             ),

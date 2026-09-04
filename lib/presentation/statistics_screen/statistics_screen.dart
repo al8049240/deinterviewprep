@@ -5,7 +5,9 @@ import 'package:provider/provider.dart';
 import '../../models/statistics_models.dart';
 import '../../providers/statistics_provider.dart';
 import '../../services/auth_service.dart';
+import '../../services/pro_service.dart';
 import '../../theme/app_theme.dart';
+import '../paywall_screen/paywall_screen.dart';
 
 class StatisticsScreen extends StatefulWidget {
   const StatisticsScreen({super.key});
@@ -17,24 +19,64 @@ class StatisticsScreen extends StatefulWidget {
 class _StatisticsScreenState extends State<StatisticsScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final ProService _proService = ProService();
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    _proService.addListener(_onProChanged);
+    _proService.init();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<StatisticsProvider>().loadStatistics();
+      if (_proService.isProUnlocked) {
+        context.read<StatisticsProvider>().loadStatistics();
+      }
     });
   }
 
   @override
   void dispose() {
+    _proService.removeListener(_onProChanged);
     _tabController.dispose();
     super.dispose();
   }
 
+  void _onProChanged() {
+    if (!mounted) return;
+    if (_proService.isProUnlocked) {
+      context.read<StatisticsProvider>().loadStatistics();
+    }
+    setState(() {});
+  }
+
+  void _showPaywall() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const PaywallScreen(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (!_proService.isProUnlocked) {
+      return Scaffold(
+        backgroundColor: AppTheme.backgroundLight,
+        appBar: AppBar(
+          backgroundColor: AppTheme.primary,
+          foregroundColor: Colors.white,
+          title: const Text('Statistics'),
+        ),
+        body: Center(
+          child: ElevatedButton.icon(
+            onPressed: _showPaywall,
+            icon: const Icon(Icons.lock_rounded),
+            label: const Text('Unlock Statistics'),
+          ),
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: AppTheme.backgroundLight,
       appBar: AppBar(

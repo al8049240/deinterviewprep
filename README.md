@@ -124,6 +124,35 @@ Container(
 ```
 ## 📦 Deployment
 
+### In-app purchase setup
+
+Create these **non-consumable** products in both App Store Connect and Google
+Play Console. The price shown in the app always comes from the active store, so
+configure the USD base price and regional tiers there.
+
+| Product ID | Price | Purpose |
+| --- | ---: | --- |
+| `de_interview_prep_lifetime_launch` | $9.99 | Limited launch promotion |
+| `de_interview_prep_lifetime` | $14.99 | Normal lifetime purchase |
+
+Launch builds use the promotional product by default. Build the normal-price
+version with:
+
+```bash
+flutter build appbundle --release \
+  --dart-define=IAP_LAUNCH_PROMOTION=false \
+  --dart-define-from-file=env.json
+```
+
+Before publishing, replace the placeholder Android application ID and debug
+release signing configuration, configure the matching iOS bundle ID, accept
+the stores' paid-app agreements, and test purchase and restore flows with
+sandbox/license-test accounts.
+
+The client validates the store transaction data before granting local access.
+For a large-scale production launch, send the receipt to a trusted backend for
+server-side verification and cross-device entitlement synchronization.
+
 Build the application for production:
 
 ```bash

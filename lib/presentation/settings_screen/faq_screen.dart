@@ -52,9 +52,9 @@ class _FaqScreenState extends State<FaqScreen> {
       keywords: 'revision study concepts interview',
     ),
     _FaqItem(
-      question: 'How does the code playground work?',
+      question: 'What is the Interview Code Library?',
       answer:
-          'The Code Playground lets you open coding exercises and work through solutions in a focused workspace. Choose an exercise from the playground list to begin.',
+          'The Interview Code Library provides useful SQL and Python examples and patterns you can review before interviews.',
       keywords: 'coding exercise solution workspace',
     ),
     _FaqItem(

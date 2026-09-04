@@ -9,6 +9,7 @@ import '../../models/flashcard_model.dart';
 import '../../providers/bookmark_provider.dart';
 import '../bookmarks_screen/bookmarks_screen.dart';
 import '../performance_trends_screen/performance_trends_screen.dart';
+import '../paywall_screen/paywall_screen.dart';
 
 class FlashcardsScreen extends StatefulWidget {
   /// When set, the screen shows only this specific flashcard (bookmark single-item view).
@@ -21,6 +22,7 @@ class FlashcardsScreen extends StatefulWidget {
 }
 
 class _FlashcardsScreenState extends State<FlashcardsScreen> {
+  static const int _freeCardLimit = 30;
   final ProService _proService = ProService();
   final SupabaseService _supabaseService = SupabaseService.instance;
 
@@ -30,6 +32,7 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
 
   // All flashcards fetched from Supabase
   List<FlashcardModel> _allCards = [];
+  int _officialCardCount = 0;
 
   // Topic name -> topic_id mapping from Supabase
   Map<String, int> _topicNameToId = {};
@@ -51,7 +54,28 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
   @override
   void initState() {
     super.initState();
+    _proService.init();
+    _proService.addListener(_onProChanged);
     _loadFlashcards();
+  }
+
+  @override
+  void dispose() {
+    _proService.removeListener(_onProChanged);
+    super.dispose();
+  }
+
+  void _onProChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _showPaywall() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const PaywallScreen(),
+    );
   }
 
   /// Maps a Supabase topic name to one of our display category names.
@@ -162,6 +186,7 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
       if (mounted) {
         setState(() {
           _allCards = cards;
+          _officialCardCount = flashcardsRaw.length;
           _topicNameToId = topicNameToId;
           _categories = orderedCategories;
           _isLoading = false;
@@ -452,7 +477,9 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
                           Text(
                             widget.initialCardId != null
                                 ? '1 bookmarked flashcard'
-                                : '${cards.length} flashcard${cards.length == 1 ? '' : 's'} in $_selectedCategory',
+                                : _proService.isProUnlocked
+                                ? '${cards.length} flashcard${cards.length == 1 ? '' : 's'} in $_selectedCategory'
+                                : '${cards.length} cards • first $_freeCardLimit are free',
                             style: GoogleFonts.dmSans(
                               fontSize: 12,
                               color: Colors.grey.shade500,
@@ -481,14 +508,20 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
                               itemCount: cards.length,
                               itemBuilder: (context, index) {
                                 final card = cards[index];
+                                final globalIndex = _allCards.indexOf(card);
+                                final isLocked = !_proService.isProUnlocked &&
+                                    globalIndex >= _freeCardLimit &&
+                                    globalIndex < _officialCardCount;
                                 final isBookmarked = bookmarkProvider
                                     .isFlashcardBookmarked(card.id);
                                 return _FlashcardListItem(
                                   card: card,
                                   index: index,
                                   isBookmarked: isBookmarked,
-                                  initiallyExpanded:
+                                  initiallyExpanded: !isLocked &&
                                       widget.initialCardId == card.id,
+                                  isLocked: isLocked,
+                                  onLocked: _showPaywall,
                                   onBookmark: () => _toggleBookmark(card),
                                   onMastered: () async {
                                     card.isMastered = !card.isMastered;
@@ -997,6 +1030,8 @@ class _FlashcardListItem extends StatefulWidget {
   final bool initiallyExpanded;
   final VoidCallback onBookmark;
   final VoidCallback onMastered;
+  final bool isLocked;
+  final VoidCallback onLocked;
 
   const _FlashcardListItem({
     required this.card,
@@ -1005,6 +1040,8 @@ class _FlashcardListItem extends StatefulWidget {
     this.initiallyExpanded = false,
     required this.onBookmark,
     required this.onMastered,
+    required this.isLocked,
+    required this.onLocked,
   });
 
   @override
@@ -1045,7 +1082,9 @@ class _FlashcardListItemState extends State<_FlashcardListItem> {
         children: [
           // Header row — always visible
           InkWell(
-            onTap: () => setState(() => _isExpanded = !_isExpanded),
+            onTap: widget.isLocked
+                ? widget.onLocked
+                : () => setState(() => _isExpanded = !_isExpanded),
             borderRadius: BorderRadius.circular(14),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
@@ -1145,8 +1184,18 @@ class _FlashcardListItemState extends State<_FlashcardListItem> {
                   // Actions column
                   Column(
                     children: [
+                      if (widget.isLocked) ...[
+                        const Icon(
+                          Icons.lock_rounded,
+                          size: 20,
+                          color: AppTheme.secondary,
+                        ),
+                        const SizedBox(height: 6),
+                      ],
                       GestureDetector(
-                        onTap: widget.onBookmark,
+                        onTap: widget.isLocked
+                            ? widget.onLocked
+                            : widget.onBookmark,
                         child: Icon(
                           widget.isBookmarked
                               ? Icons.bookmark

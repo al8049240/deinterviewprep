@@ -700,7 +700,7 @@ Process finished with exit code 0''';
         backgroundColor: AppTheme.backgroundLight,
         appBar: AppBar(
           title: Text(
-            'Code Playground',
+            'Interview Code Library',
             style: GoogleFonts.dmSans(
               fontWeight: FontWeight.w700,
               color: Colors.white,
@@ -739,7 +739,7 @@ Process finished with exit code 0''';
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Unlock the Code Playground to practice SQL and Python with client-side execution.',
+                  'Unlock the Interview Code Library to explore useful SQL and Python patterns for interviews.',
                   style: GoogleFonts.dmSans(
                     fontSize: 14,
                     color: Colors.grey.shade600,
@@ -797,7 +797,7 @@ Process finished with exit code 0''';
                   ? _activeChallenge!.title
                   : widget.initialTipId != null
                   ? 'Bookmarked Code Tip'
-                  : 'Code Playground',
+                  : 'Interview Code Library',
               style: GoogleFonts.dmSans(
                 fontWeight: FontWeight.w700,
                 color: Colors.white,

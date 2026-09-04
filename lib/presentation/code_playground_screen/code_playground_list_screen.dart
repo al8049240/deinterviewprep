@@ -97,7 +97,7 @@ class _CodePlaygroundListScreenState extends State<CodePlaygroundListScreen> {
         title: Row(
           children: [
             Text(
-              'Code Playground',
+              'Interview Code Library',
               style: GoogleFonts.dmSans(
                 fontWeight: FontWeight.w700,
                 color: Colors.white,

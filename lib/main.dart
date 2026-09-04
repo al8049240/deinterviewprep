@@ -7,6 +7,7 @@ import 'package:sizer/sizer.dart';
 import './providers/bookmark_provider.dart';
 import './providers/statistics_provider.dart';
 import './services/performance_service.dart';
+import './services/pro_service.dart';
 import './services/reminder_service.dart';
 import './services/supabase_service.dart';
 import './widgets/custom_error_widget.dart';
@@ -46,6 +47,7 @@ void main() async {
 
   // Initialise PerformanceService so persisted sessions are loaded on startup
   PerformanceService().init();
+  await ProService().init();
   try {
     await ReminderService.instance.initialize();
   } catch (error) {
