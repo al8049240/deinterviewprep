@@ -76,15 +76,15 @@ class StatisticsRepository {
 
   // ── Fetch All Attempts ────────────────────────────────────────────────────
 
-  Future<List<QuizAttempt>> fetchAttempts() async {
-    final user = _client.auth.currentUser;
-    if (user == null) return [];
+  Future<List<QuizAttempt>> fetchAttempts({String? userId}) async {
+    final targetUserId = userId ?? _client.auth.currentUser?.id;
+    if (targetUserId == null) return [];
 
     final response = await _client
         .schema(_schema)
         .from(_attemptsTable)
         .select()
-        .eq('user_id', user.id)
+        .eq('user_id', targetUserId)
         .order('created_at', ascending: false);
 
     return (response as List)
@@ -94,15 +94,15 @@ class StatisticsRepository {
 
   // ── Fetch All User Answers ────────────────────────────────────────────────
 
-  Future<List<QuizUserAnswer>> fetchUserAnswers() async {
-    final user = _client.auth.currentUser;
-    if (user == null) return [];
+  Future<List<QuizUserAnswer>> fetchUserAnswers({String? userId}) async {
+    final targetUserId = userId ?? _client.auth.currentUser?.id;
+    if (targetUserId == null) return [];
 
     final response = await _client
         .schema(_schema)
         .from(_answersTable)
         .select()
-        .eq('user_id', user.id)
+        .eq('user_id', targetUserId)
         .order('created_at', ascending: false);
 
     return (response as List)
@@ -112,12 +112,12 @@ class StatisticsRepository {
 
   // ── Calculate Full Statistics ─────────────────────────────────────────────
 
-  Future<UserStatistics> calculateStatistics() async {
-    final user = _client.auth.currentUser;
-    if (user == null) return UserStatistics.empty();
+  Future<UserStatistics> calculateStatistics({String? userId}) async {
+    final targetUserId = userId ?? _client.auth.currentUser?.id;
+    if (targetUserId == null) return UserStatistics.empty();
 
-    final attempts = await fetchAttempts();
-    final answers = await fetchUserAnswers();
+    final attempts = await fetchAttempts(userId: targetUserId);
+    final answers = await fetchUserAnswers(userId: targetUserId);
 
     if (attempts.isEmpty) return UserStatistics.empty();
 
