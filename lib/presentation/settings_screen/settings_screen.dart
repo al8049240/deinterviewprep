@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../routes/app_routes.dart';
+import '../../services/auth_service.dart';
 import '../../services/reminder_service.dart';
 import '../../theme/app_theme.dart';
 import 'faq_screen.dart';
@@ -80,6 +83,23 @@ class SettingsScreen extends StatelessWidget {
               ),
             ],
           ),
+          if (AuthService.instance.isSignedIn) ...[
+            const SizedBox(height: 20),
+            _SectionHeader(title: 'Account'),
+            const SizedBox(height: 8),
+            _SettingsCard(
+              children: [
+                _SettingsTile(
+                  icon: Icons.delete_forever_rounded,
+                  iconColor: const Color(0xFFC62828),
+                  iconBg: const Color(0xFFFFEBEE),
+                  title: 'Delete Account',
+                  subtitle: 'Permanently delete your account and app data',
+                  onTap: () => _showDeleteAccountDialog(context),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 20),
           _SectionHeader(title: 'Share'),
           const SizedBox(height: 8),
@@ -125,6 +145,23 @@ class SettingsScreen extends StatelessWidget {
       backgroundColor: Colors.transparent,
       builder: (_) => const _PurchaseHistorySheet(),
     );
+  }
+
+  Future<void> _showDeleteAccountDialog(BuildContext context) async {
+    final deleted = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const _DeleteAccountDialog(),
+    );
+    if (deleted == true && context.mounted) {
+      context.go(AppRoutes.initial);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Your account and associated data were deleted.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   Future<void> _shareApp(BuildContext context) async {
@@ -175,6 +212,84 @@ The goal is to make data engineering interview preparation practical, interactiv
 }
 
 // ── Section Header ────────────────────────────────────────────────────────────
+
+class _DeleteAccountDialog extends StatefulWidget {
+  const _DeleteAccountDialog();
+
+  @override
+  State<_DeleteAccountDialog> createState() => _DeleteAccountDialogState();
+}
+
+class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
+  bool _deleting = false;
+  String? _error;
+
+  Future<void> _deleteAccount() async {
+    setState(() {
+      _deleting = true;
+      _error = null;
+    });
+    try {
+      await AuthService.instance.deleteAccount();
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _deleting = false;
+        _error = 'Account deletion failed. Please try again or contact support.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      icon: const Icon(
+        Icons.warning_amber_rounded,
+        color: Color(0xFFC62828),
+        size: 36,
+      ),
+      title: const Text('Permanently delete account?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'This permanently deletes your account, custom content, quiz history, and saved progress. This action cannot be undone.',
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              _error!,
+              style: const TextStyle(color: Color(0xFFC62828)),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: _deleting ? null : () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _deleting ? null : _deleteAccount,
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFFC62828),
+          ),
+          child: _deleting
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Text('Delete Permanently'),
+        ),
+      ],
+    );
+  }
+}
 
 class _SectionHeader extends StatelessWidget {
   final String title;

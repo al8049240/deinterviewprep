@@ -328,11 +328,14 @@ class _DeveloperExperiencesListScreenState
                   final exp = _experiences[index];
                   final isBookmarked = bookmarkProvider
                       .isDevExperienceBookmarked(exp.id);
-                  final catColor = _categoryColor(exp.categoryTag);
+                  final cleanCategoryTag = exp.categoryTag
+                      .replaceAll(RegExp(r'[\[\]]'), '')
+                      .trim();
+                  final catColor = _categoryColor(cleanCategoryTag);
                   return _ExperienceCard(
                     id: exp.id,
                     title: exp.title,
-                    categoryTag: exp.categoryTag,
+                    categoryTag: cleanCategoryTag,
                     situation: exp.situation,
                     catColor: catColor,
                     isBookmarked: isBookmarked,
@@ -433,11 +436,14 @@ class _DeveloperExperiencesListScreenState
                 SliverList(
                   delegate: SliverChildBuilderDelegate((context, index) {
                     final exp = _userExperiences[index];
-                    final catColor = _categoryColor(exp.categoryTag);
+                    final cleanCategoryTag = exp.categoryTag
+                        .replaceAll(RegExp(r'[\[\]]'), '')
+                        .trim();
+                    final catColor = _categoryColor(cleanCategoryTag);
                     return _ExperienceCard(
                       id: exp.id,
                       title: exp.title,
-                      categoryTag: exp.categoryTag,
+                      categoryTag: cleanCategoryTag,
                       situation: exp.situation,
                       catColor: catColor,
                       isBookmarked: false,
@@ -552,7 +558,9 @@ class _ExperienceCard extends StatelessWidget {
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
-                              '[ $categoryTag ]',
+                              categoryTag
+                                  .replaceAll(RegExp(r'[\[\]]'), '')
+                                  .trim(),
                               style: GoogleFonts.dmSans(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w700,

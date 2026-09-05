@@ -129,6 +129,30 @@ class AuthService {
     await _client.auth.signOut();
   }
 
+  /// Permanently deletes the signed-in user's account and associated data.
+  /// The privileged deletion runs in an authenticated Supabase Edge Function.
+  Future<void> deleteAccount() async {
+    if (!isSignedIn) {
+      throw StateError('You must be signed in to delete your account.');
+    }
+
+    final response = await _client.functions.invoke('delete-account');
+    if (response.status < 200 || response.status >= 300) {
+      final data = response.data;
+      final message = data is Map<String, dynamic>
+          ? data['error']?.toString()
+          : null;
+      throw AuthException(message ?? 'Account deletion failed.');
+    }
+
+    if (!kIsWeb) {
+      try {
+        await GoogleSignIn.instance.signOut();
+      } catch (_) {}
+    }
+    await _client.auth.signOut(scope: SignOutScope.local);
+  }
+
   /// Get display name for current user
   String get displayName {
     final user = currentUser;

@@ -6,6 +6,13 @@ void main() {
     expect(AuthService.instance.isSignedIn, isFalse);
   });
 
+  test('Account deletion requires an authenticated user', () async {
+    await expectLater(
+      AuthService.instance.deleteAccount(),
+      throwsA(isA<StateError>()),
+    );
+  });
+
   test('Duplicate-email detection flags existing account errors', () {
     expect(
       AuthService.isDuplicateEmailError('User already registered'),

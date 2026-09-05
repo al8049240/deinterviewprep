@@ -36,6 +36,12 @@ class _SubtopicScreenState extends State<SubtopicScreen> {
 
   void Function()? _unsubscribe;
 
+  bool _isComingSoonSubtopic(String databaseName) {
+    final normalized = databaseName.trim().toLowerCase();
+    return normalized.contains('generative ai tools') &&
+        normalized.contains('real-world data engineering');
+  }
+
   String _displaySubtopicName(String databaseName) {
     if (widget.topicName != 'Cloud') return databaseName;
     switch (databaseName.trim().toLowerCase()) {
@@ -113,11 +119,6 @@ class _SubtopicScreenState extends State<SubtopicScreen> {
         }),
       );
 
-      // 4. Total count for the topic
-      final totalCount = await QuizService.instance.fetchTopicQuestionCountById(
-        topicId,
-      );
-
       if (mounted) {
         final items = <_SubtopicItem>[];
         for (int i = 0; i < subtopicRows.length; i++) {
@@ -134,15 +135,20 @@ class _SubtopicScreenState extends State<SubtopicScreen> {
                 row['description']?.toString() ?? '',
               ),
               questionCount: counts[i],
+              isComingSoon: _isComingSoonSubtopic(databaseName),
             ),
           );
         }
+
+        final availableQuestionCount = items
+            .where((item) => !item.isComingSoon)
+            .fold<int>(0, (sum, item) => sum + item.questionCount);
 
         final needsSubscription = _topicId != topicId;
         setState(() {
           _topicId = topicId;
           _subtopics = items;
-          _totalCount = totalCount;
+          _totalCount = availableQuestionCount;
           _isLoading = false;
         });
 
@@ -439,7 +445,7 @@ class _SubtopicScreenState extends State<SubtopicScreen> {
   }
 
   Widget _buildSubtopicCard(_SubtopicItem sub) {
-    final hasQuestions = sub.questionCount > 0;
+    final hasQuestions = sub.questionCount > 0 && !sub.isComingSoon;
     final color = widget.topicColor;
     return GestureDetector(
       onTap: hasQuestions
@@ -524,7 +530,9 @@ class _SubtopicScreenState extends State<SubtopicScreen> {
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
-                      hasQuestions
+                      sub.isComingSoon
+                          ? 'Coming Soon'
+                          : hasQuestions
                           ? '${sub.questionCount} questions'
                           : 'Coming soon',
                       style: GoogleFonts.dmSans(
@@ -557,11 +565,13 @@ class _SubtopicItem {
   final String name;
   final String description;
   final int questionCount;
+  final bool isComingSoon;
 
   const _SubtopicItem({
     required this.id,
     required this.name,
     required this.description,
     required this.questionCount,
+    this.isComingSoon = false,
   });
 }

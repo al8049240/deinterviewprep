@@ -303,6 +303,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     isSeriousMode: isPro,
                     onUnlockTap: _showUnlockSeriousModeSheet,
                   ),
+                  const SizedBox(height: 12),
+                  const _CheatsheetComingSoonCard(),
                   const SizedBox(height: 24),
                 ],
               ),
@@ -683,6 +685,101 @@ class _DevExperiencesBannerCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ── Cheatsheet Coming Soon Card ──────────────────────────────────────────────
+
+class _CheatsheetComingSoonCard extends StatelessWidget {
+  const _CheatsheetComingSoonCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFFF57C00).withAlpha(26),
+            const Color(0xFFFFB300).withAlpha(14),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFF57C00).withAlpha(75)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF57C00).withAlpha(24),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.auto_awesome_rounded,
+              color: Color(0xFFE65100),
+              size: 26,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Data Engineering Cheatsheets',
+                  style: GoogleFonts.dmSans(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFFE65100),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Quick references for everyday data engineering',
+                  style: GoogleFonts.dmSans(
+                    fontSize: 12,
+                    color: const Color(0xFF546E7A),
+                    height: 1.4,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 7),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF57C00),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    'Coming Soon',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          const Icon(
+            Icons.schedule_rounded,
+            color: Color(0xFFF57C00),
+            size: 22,
+          ),
+        ],
       ),
     );
   }

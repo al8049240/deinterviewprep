@@ -12,7 +12,10 @@ class DeveloperExperienceDetailScreen extends StatelessWidget {
   const DeveloperExperienceDetailScreen({super.key, required this.experience});
 
   Color get _categoryColor {
-    switch (experience.categoryTag) {
+    final categoryTag = experience.categoryTag
+        .replaceAll(RegExp(r'[\[\]]'), '')
+        .trim();
+    switch (categoryTag) {
       case 'Behavioral':
         return const Color(0xFF1565C0);
       case 'Failure Lesson':
@@ -69,7 +72,9 @@ class DeveloperExperienceDetailScreen extends StatelessWidget {
                     border: Border.all(color: _categoryColor.withAlpha(60)),
                   ),
                   child: Text(
-                    '[ ${experience.categoryTag} ]',
+                    experience.categoryTag
+                        .replaceAll(RegExp(r'[\[\]]'), '')
+                        .trim(),
                     style: GoogleFonts.dmSans(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
