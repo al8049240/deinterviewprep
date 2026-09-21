@@ -19,6 +19,14 @@ Deno.serve(async (request) => {
   }
 
   try {
+    const body = await request.json().catch(() => ({}))
+    if (body.confirmation !== 'DELETE_MY_ACCOUNT') {
+      return Response.json(
+        { error: 'Account deletion confirmation is missing.' },
+        { status: 400, headers: corsHeaders },
+      )
+    }
+
     const authorization = request.headers.get('Authorization')
     if (!authorization?.startsWith('Bearer ')) {
       return Response.json(

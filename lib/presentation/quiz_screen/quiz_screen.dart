@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../../providers/bookmark_provider.dart';
+import '../../providers/statistics_provider.dart';
 import '../../routes/app_routes.dart';
 import '../../services/performance_service.dart';
 import '../../services/quiz_service.dart';
@@ -78,6 +79,7 @@ class QuizScreen extends StatefulWidget {
   final List<Map<String, dynamic>>? overrideQuestions;
   final String? subtag;
   final int? subtopicId;
+  final Set<String>? questionIds;
 
   const QuizScreen({
     super.key,
@@ -87,6 +89,7 @@ class QuizScreen extends StatefulWidget {
     this.overrideQuestions,
     this.subtag,
     this.subtopicId,
+    this.questionIds,
   });
 
   @override
@@ -197,6 +200,11 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
 
       if (!mounted) return;
 
+      if (widget.questionIds != null) {
+        maps = maps
+            .where((map) => widget.questionIds!.contains(map['id']?.toString()))
+            .toList();
+      }
       final count = widget.questionCount.clamp(0, maps.length);
       final questions = maps.take(count).map(QuestionModel.fromMap).toList();
 
@@ -207,7 +215,9 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
       });
 
       // Show warning if insufficient questions (skip for override mode)
-      if (widget.overrideQuestions == null && questions.length < 5) {
+      if (widget.overrideQuestions == null &&
+          widget.questionIds == null &&
+          questions.length < 5) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _showInsufficientQuestionsDialog(questions.length);
         });
@@ -361,7 +371,14 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
       _selectedAnswers.containsKey(_currentIndex) ||
       (_selectedMultiAnswers[_currentIndex]?.isNotEmpty == true &&
           _isMcmaSubmitted(_currentIndex));
-  int get _answeredCount => _selectedAnswers.length;
+  int get _answeredCount {
+    final answeredIndexes = <int>{..._selectedAnswers.keys};
+    answeredIndexes.addAll(_pendingMcqAnswers.keys);
+    for (final entry in _selectedMultiAnswers.entries) {
+      if (entry.value.isNotEmpty) answeredIndexes.add(entry.key);
+    }
+    return answeredIndexes.length;
+  }
 
   int get _mcmaSubmittedCount {
     int count = 0;
@@ -393,7 +410,8 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
         _selectedMultiAnswers[_currentIndex] = current;
       });
     } else {
-      // Single choice (mcq): just mark as pending, don't submit yet
+      // Keep the choice pending until the user explicitly submits it. Pending
+      // choices are still graded when the quiz is finished.
       setState(() {
         _pendingMcqAnswers[_currentIndex] = optionIndex;
       });
@@ -495,6 +513,27 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
   }
 
   void _finishQuiz() {
+    // Grade every selected-but-unsubmitted answer without revealing an
+    // explanation. This preserves the Submit Answer interaction while still
+    // counting choices when the user finishes the quiz directly.
+    for (int index = 0; index < _questions.length; index++) {
+      if (_selectedAnswers.containsKey(index)) continue;
+      final question = _questions[index];
+      if (_isMcmaType(question)) {
+        final selected = _selectedMultiAnswers[index] ?? const <int>{};
+        if (selected.isEmpty) continue;
+        final correctSet = question.correctIndices.isNotEmpty
+            ? question.correctIndices.toSet()
+            : {question.correctIndex};
+        final isCorrect =
+            selected.length == correctSet.length &&
+            selected.every(correctSet.contains);
+        _selectedAnswers[index] = isCorrect ? question.correctIndex : -1;
+      } else {
+        final pending = _pendingMcqAnswers[index];
+        if (pending != null) _selectedAnswers[index] = pending;
+      }
+    }
     _timer.cancel();
     int correct = 0;
     _selectedAnswers.forEach((qIdx, ansIdx) {
@@ -542,7 +581,9 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
         correctAnswers: correct,
         durationSeconds: _totalSeconds,
         answeredQuestions: questionsWithAnswers,
-      );
+      ).then((_) {
+        if (mounted) context.read<StatisticsProvider>().refresh();
+      });
     }
 
     context.pushReplacement(

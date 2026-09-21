@@ -132,17 +132,44 @@ class AuthService {
   /// Permanently deletes the signed-in user's account and associated data.
   /// The privileged deletion runs in an authenticated Supabase Edge Function.
   Future<void> deleteAccount() async {
-    if (!isSignedIn) {
+    var session = _client.auth.currentSession;
+    if (session == null) {
       throw StateError('You must be signed in to delete your account.');
     }
 
-    final response = await _client.functions.invoke('delete-account');
+    try {
+      final refreshed = await _client.auth.refreshSession();
+      session = refreshed.session ?? session;
+    } catch (_) {
+      // Continue with the current token; the function will return a clear
+      // authentication error if it has actually expired.
+    }
+
+    final accessToken = session?.accessToken;
+    if (accessToken == null || accessToken.isEmpty) {
+      throw AuthException(
+        'Your session has expired. Please sign in again before deleting your account.',
+      );
+    }
+
+    final response = await _client.functions.invoke(
+      'delete-account',
+      headers: {'Authorization': 'Bearer $accessToken'},
+      body: {'confirmation': 'DELETE_MY_ACCOUNT'},
+    );
     if (response.status < 200 || response.status >= 300) {
       final data = response.data;
-      final message = data is Map<String, dynamic>
+      final message = data is Map
           ? data['error']?.toString()
           : null;
       throw AuthException(message ?? 'Account deletion failed.');
+    }
+
+    final data = response.data;
+    if (data is! Map || data['deleted'] != true) {
+      throw AuthException(
+        'The server did not confirm that the account was deleted.',
+      );
     }
 
     if (!kIsWeb) {
@@ -150,7 +177,12 @@ class AuthService {
         await GoogleSignIn.instance.signOut();
       } catch (_) {}
     }
-    await _client.auth.signOut(scope: SignOutScope.local);
+    try {
+      await _client.auth.signOut(scope: SignOutScope.local);
+    } catch (_) {
+      // The server has already removed the user, so the old session can be
+      // invalid before signOut completes.
+    }
   }
 
   /// Get display name for current user

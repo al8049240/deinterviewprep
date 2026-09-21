@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import './offline_quiz_cache.dart';
 import './supabase_service.dart';
 
 /// Model matching the de_mobile_app."quiz-question" + "quiz-answer" joined schema
@@ -107,6 +108,46 @@ class QuizQuestionModel {
       'type': type,
     };
   }
+
+  Map<String, dynamic> toCacheMap() {
+    return {
+      'id': id,
+      'text': text,
+      'options': options,
+      'correctIndex': correctIndex,
+      'correctIndices': correctIndices,
+      'explanation': explanation,
+      'difficulty': difficulty,
+      'proTip': proTip,
+      'interviewTip': interviewTip,
+      'hint': hint,
+      'interviewNote': interviewNote,
+      'category': category,
+      'type': type,
+      'subtag': subtag,
+    };
+  }
+
+  factory QuizQuestionModel.fromCacheMap(Map<String, dynamic> map) {
+    return QuizQuestionModel(
+      id: map['id']?.toString() ?? '',
+      text: map['text']?.toString() ?? '',
+      options: List<String>.from(map['options'] as List? ?? const []),
+      correctIndex: (map['correctIndex'] as num?)?.toInt() ?? 0,
+      correctIndices: (map['correctIndices'] as List? ?? const [])
+          .map((value) => (value as num).toInt())
+          .toList(),
+      explanation: map['explanation']?.toString() ?? '',
+      difficulty: map['difficulty']?.toString() ?? 'junior',
+      proTip: map['proTip']?.toString() ?? '',
+      interviewTip: map['interviewTip']?.toString() ?? '',
+      hint: map['hint']?.toString() ?? '',
+      interviewNote: map['interviewNote']?.toString() ?? '',
+      category: map['category']?.toString() ?? '',
+      type: map['type']?.toString() ?? 'mcq',
+      subtag: map['subtag']?.toString() ?? '',
+    );
+  }
 }
 
 // ── Lightweight question metadata (Tier-1 payload) ─────────────────────────
@@ -161,6 +202,35 @@ class QuizService {
   QuizService._();
 
   SupabaseClient get _client => SupabaseService.instance.client;
+  final OfflineQuizCache _offlineCache = OfflineQuizCache.instance;
+
+  bool lastLoadUsedOfflineCache = false;
+
+  Future<void> _saveOfflineSet(
+    String cacheKey,
+    List<QuizQuestionModel> questions,
+  ) async {
+    try {
+      await _offlineCache.saveSet(
+        cacheKey,
+        questions.map((question) => question.toCacheMap()).toList(),
+      );
+    } catch (_) {}
+  }
+
+  Future<List<QuizQuestionModel>> _readOfflineSet(String cacheKey) async {
+    try {
+      final rows = await _offlineCache.readSet(cacheKey);
+      final questions = rows
+          .map(QuizQuestionModel.fromCacheMap)
+          .where((question) => question.id.isNotEmpty)
+          .toList();
+      if (questions.isNotEmpty) lastLoadUsedOfflineCache = true;
+      return questions;
+    } catch (_) {
+      return const [];
+    }
+  }
 
   // ── Hardcoded fallback IDs (used when dynamic lookup fails) ───────────────
   static const int kSparkTopicId = 758910;
@@ -459,14 +529,20 @@ class QuizService {
       final List<dynamic> questionData = response as List<dynamic>;
       if (questionData.isEmpty) return [];
       final models = await _buildModelsFromQuestionData(questionData);
+      lastLoadUsedOfflineCache = false;
       _questionsByTopicCache[topicId] = _CacheEntry(
         models,
         ttl: const Duration(minutes: 5),
       );
+      await _saveOfflineSet('topic:$topicId', models);
       return models;
     } on PostgrestException catch (e) {
+      final offline = await _readOfflineSet('topic:$topicId');
+      if (offline.isNotEmpty) return offline;
       throw Exception('Database error: ${e.message}');
     } catch (e) {
+      final offline = await _readOfflineSet('topic:$topicId');
+      if (offline.isNotEmpty) return offline;
       throw Exception('Failed to fetch questions: $e');
     }
   }
@@ -479,12 +555,18 @@ class QuizService {
       }
       final resolvedId = await _resolveTopicId(topicId);
       if (resolvedId != null) {
-        return fetchQuestionsByTopicId(resolvedId);
+        final questions = await fetchQuestionsByTopicId(resolvedId);
+        await _saveOfflineSet('topic-name:$topicId', questions);
+        return questions;
       }
-      return [];
+      return await _readOfflineSet('topic-name:$topicId');
     } on PostgrestException catch (e) {
+      final offline = await _readOfflineSet('topic-name:$topicId');
+      if (offline.isNotEmpty) return offline;
       throw Exception('Database error: ${e.message}');
     } catch (e) {
+      final offline = await _readOfflineSet('topic-name:$topicId');
+      if (offline.isNotEmpty) return offline;
       throw Exception('Failed to fetch questions: $e');
     }
   }
@@ -539,16 +621,22 @@ class QuizService {
       final List<dynamic> questionData = response as List<dynamic>;
       if (questionData.isNotEmpty) {
         final models = await _buildModelsFromQuestionData(questionData);
+        lastLoadUsedOfflineCache = false;
         _questionsBySubtopicCache[subtopicId] = _CacheEntry(
           models,
           ttl: const Duration(minutes: 5),
         );
+        await _saveOfflineSet('subtopic:$subtopicId', models);
         return models;
       }
       return [];
     } on PostgrestException catch (e) {
+      final offline = await _readOfflineSet('subtopic:$subtopicId');
+      if (offline.isNotEmpty) return offline;
       throw Exception('Database error: ${e.message}');
     } catch (e) {
+      final offline = await _readOfflineSet('subtopic:$subtopicId');
+      if (offline.isNotEmpty) return offline;
       throw Exception('Failed to fetch questions by subtopic: $e');
     }
   }
@@ -567,12 +655,20 @@ class QuizService {
       if (topicId == null) return [];
       final subtopicId = await fetchSubtopicId(topicId, subtopicName);
       if (subtopicId != null) {
-        return await fetchQuestionsBySubtopicId(subtopicId);
+        final questions = await fetchQuestionsBySubtopicId(subtopicId);
+        await _saveOfflineSet('subtag:$subtag', questions);
+        return questions;
       }
+      final offline = await _readOfflineSet('subtag:$subtag');
+      if (offline.isNotEmpty) return offline;
       return await fetchQuestionsByTopicId(topicId);
     } on PostgrestException catch (e) {
+      final offline = await _readOfflineSet('subtag:$subtag');
+      if (offline.isNotEmpty) return offline;
       throw Exception('Database error: ${e.message}');
     } catch (e) {
+      final offline = await _readOfflineSet('subtag:$subtag');
+      if (offline.isNotEmpty) return offline;
       throw Exception('Failed to fetch questions by subtag: $e');
     }
   }

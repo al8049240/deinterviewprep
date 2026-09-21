@@ -242,6 +242,10 @@ class _FeatureList extends StatelessWidget {
     ),
     ('Custom quiz builder', 'Create focused practice sessions by topic'),
     (
+      'Offline mode coming soon',
+      'Download quizzes for uninterrupted practice without internet',
+    ),
+    (
       'Interview Code Library',
       'Useful SQL and Python patterns for technical interviews',
     ),

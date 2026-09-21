@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -103,6 +104,16 @@ class _AuthScreenState extends State<AuthScreen>
 
       if (!mounted) return;
 
+      if (response.user != null &&
+          response.user!.identities != null &&
+          response.user!.identities!.isEmpty) {
+        setState(() {
+          _errorMessage =
+              'Unable to create this account. If you used this email before, try signing in or resetting the password. If it was recently deleted, wait a moment and try again.';
+        });
+        return;
+      }
+
       if (response.user != null && response.session == null) {
         _signUpNameCtrl.clear();
         _signUpEmailCtrl.clear();
@@ -149,9 +160,12 @@ class _AuthScreenState extends State<AuthScreen>
       if (success && mounted) Navigator.of(context).pop(true);
     } catch (e) {
       if (mounted) {
-        setState(
-          () => _errorMessage = 'Google sign-in failed. Please try again.',
-        );
+        final detail = e.toString().replaceFirst('Exception: ', '');
+        setState(() => _errorMessage = detail.contains('GOOGLE_WEB_CLIENT_ID')
+            ? 'Google sign-in is not configured for this build.'
+            : kDebugMode
+                ? 'Google sign-in failed: $detail'
+                : 'Google sign-in failed. Check the app configuration and try again.');
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);

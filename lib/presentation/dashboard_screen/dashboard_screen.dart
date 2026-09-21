@@ -167,28 +167,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       ),
                                     ),
                                   ),
-                                  const SizedBox(width: 8),
-                                  GestureDetector(
-                                    onTap: _showUnlockSeriousModeSheet,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 10,
-                                        vertical: 4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFF9A825),
-                                        borderRadius: BorderRadius.circular(20),
-                                      ),
-                                      child: Text(
-                                        '⚡ Upgrade',
-                                        style: GoogleFonts.dmSans(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w700,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
                                 ],
                                 // Profile icon removed — accessible via bottom nav Profile tab
                               ],

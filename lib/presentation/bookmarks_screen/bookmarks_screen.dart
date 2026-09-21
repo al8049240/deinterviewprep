@@ -835,7 +835,8 @@ class _QuizBookmarkCard extends StatelessWidget {
               builder: (context) => quiz_screen.QuizScreen(
                 topicId: topicId,
                 topicName: topicName,
-                questionCount: 999,
+                questionCount: 1,
+                questionIds: {question.id},
               ),
             ),
           );

@@ -12,6 +12,9 @@ import 'faq_screen.dart';
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
+  static const _playStoreUrl =
+      'https://play.google.com/store/apps/details?id=com.aa.deinterviewprep';
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -165,7 +168,8 @@ class SettingsScreen extends StatelessWidget {
   }
 
   Future<void> _shareApp(BuildContext context) async {
-    const appUrl = String.fromEnvironment('APP_SHARE_URL');
+    const configuredUrl = String.fromEnvironment('APP_SHARE_URL');
+    final appUrl = configuredUrl.isEmpty ? _playStoreUrl : configuredUrl;
     final renderBox = context.findRenderObject() as RenderBox?;
     const overview =
         '''I’m using DE Interview Prep to prepare for data engineering interviews. The app helps me practice and review through several features:
@@ -183,9 +187,7 @@ class SettingsScreen extends StatelessWidget {
 • Quiz Statistics — track quiz performance, including questions answered, correct/incorrect answers, accuracy, progress, and areas that need more practice.
 
 The goal is to make data engineering interview preparation practical, interactive, and personalized, combining knowledge review with real-world experience.''';
-    final message = appUrl.isEmpty
-        ? overview
-        : '$overview\n\nDownload DE Interview Prep: $appUrl';
+    final message = '$overview\n\nDownload DE Interview Prep: $appUrl';
 
     try {
       await SharePlus.instance.share(
@@ -232,11 +234,14 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
     try {
       await AuthService.instance.deleteAccount();
       if (mounted) Navigator.of(context).pop(true);
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
       setState(() {
         _deleting = false;
-        _error = 'Account deletion failed. Please try again or contact support.';
+        _error = error
+            .toString()
+            .replaceFirst('AuthException(message: ', '')
+            .replaceFirst('Exception: ', '');
       });
     }
   }
@@ -809,8 +814,8 @@ class _ContactUsSheet extends StatelessWidget {
             iconColor: const Color(0xFF6A1B9A),
             iconBg: const Color(0xFFF3E5F5),
             title: 'Leave a Review',
-            subtitle: 'Rate your experience and share feedback',
-            onTap: () => _showReviewSheet(context),
+            subtitle: 'Rate DE Interview Prep on Google Play',
+            onTap: () => _openPlayStoreReview(context),
           ),
         ],
       ),
@@ -842,13 +847,35 @@ class _ContactUsSheet extends StatelessWidget {
     }
   }
 
-  void _showReviewSheet(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => const _ReviewSheet(),
+  Future<void> _openPlayStoreReview(BuildContext context) async {
+    final marketUri = Uri.parse(
+      'market://details?id=com.aa.deinterviewprep',
     );
+    final webUri = Uri.parse(SettingsScreen._playStoreUrl);
+    var openedStore = false;
+    try {
+      openedStore = await launchUrl(
+        marketUri,
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (_) {}
+    if (openedStore) return;
+
+    var openedWeb = false;
+    try {
+      openedWeb = await launchUrl(
+        webUri,
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (_) {}
+    if (!openedWeb && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Google Play is not available on this device.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 }
 

@@ -332,13 +332,10 @@ class StatisticsRepository {
     // Get unique dates with activity (UTC date only)
     final activeDates =
         attempts
-            .map(
-              (a) => DateTime(
-                a.createdAt.year,
-                a.createdAt.month,
-                a.createdAt.day,
-              ),
-            )
+            .map((a) {
+              final local = a.createdAt.toLocal();
+              return DateTime(local.year, local.month, local.day);
+            })
             .toSet()
             .toList()
           ..sort((a, b) => b.compareTo(a)); // descending
