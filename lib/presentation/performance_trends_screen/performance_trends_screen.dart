@@ -63,11 +63,14 @@ class _PerformanceTrendsScreenState extends State<PerformanceTrendsScreen> {
     if (!AuthService.instance.isSignedIn) return;
     setState(() => _attemptsLoading = true);
     try {
-      final attempts = await StatisticsRepository.instance.fetchAttempts();
+      final attempts = await StatisticsRepository.instance.fetchAttempts(
+        limit: _attemptDisplayLimit,
+      );
+      attempts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       final answers = await StatisticsRepository.instance.fetchUserAnswers();
       if (mounted) {
         setState(() {
-          _attempts = attempts.take(_attemptDisplayLimit).toList();
+          _attempts = attempts;
           _skillAttempts = attempts;
           _userAnswers = answers;
           _attemptsLoading = false;
@@ -1570,18 +1573,18 @@ class _SkillBadgesRow extends StatelessWidget {
     }
     if (lower.contains('python')) {
       return _SkillData(entry.key, Icons.code_rounded,
-          const Color(0xFF2E7D32), const Color(0xFFE8F5E9), entry.value / 100);
+          const Color(0xFF1565C0), const Color(0xFFE3F2FD), entry.value / 100);
     }
     if (lower.contains('spark')) {
       return _SkillData(entry.key, Icons.bolt_rounded,
-          const Color(0xFFE65100), const Color(0xFFFFF3E0), entry.value / 100);
+          const Color(0xFF1565C0), const Color(0xFFE3F2FD), entry.value / 100);
     }
     if (lower.contains('kafka')) {
       return _SkillData(entry.key, Icons.stream_rounded,
-          const Color(0xFF00695C), const Color(0xFFE0F2F1), entry.value / 100);
+          const Color(0xFF1565C0), const Color(0xFFE3F2FD), entry.value / 100);
     }
     return _SkillData(entry.key, Icons.school_rounded,
-        const Color(0xFF6A1B9A), const Color(0xFFF3E5F5), entry.value / 100);
+        const Color(0xFF1565C0), const Color(0xFFE3F2FD), entry.value / 100);
   }
 
   @override
@@ -1787,6 +1790,9 @@ class _TopicAttemptGroup {
 
   int get totalAttempts => attempts.length;
 
+  String get selectionKey =>
+      '$topicId::${topicName.trim().toLowerCase()}';
+
   double get bestScore {
     if (attempts.isEmpty) return 0;
     return attempts
@@ -1838,12 +1844,16 @@ class _GroupedAttemptsSection extends StatefulWidget {
 
 class _GroupedAttemptsSectionState extends State<_GroupedAttemptsSection> {
   Set<String> _selectedTopicIds = {};
+  final Set<String> _expandedTopicIds = {};
   bool _customPracticeMode = false;
+
+  String _groupKey(QuizAttempt attempt) =>
+      '${attempt.topicId}::${attempt.topicName.trim().toLowerCase()}';
 
   List<_TopicAttemptGroup> get _groups {
     final Map<String, List<QuizAttempt>> byTopic = {};
     for (final attempt in widget.attempts) {
-      byTopic.putIfAbsent(attempt.topicId, () => []).add(attempt);
+      byTopic.putIfAbsent(_groupKey(attempt), () => []).add(attempt);
     }
 
     final attemptIds = widget.attempts.map((a) => a.id).toSet();
@@ -1854,7 +1864,7 @@ class _GroupedAttemptsSectionState extends State<_GroupedAttemptsSection> {
           (a) => a.id == answer.attemptId,
           orElse: () => widget.attempts.first,
         );
-        incorrectByTopic.putIfAbsent(attempt.topicId, () => []).add(answer);
+        incorrectByTopic.putIfAbsent(_groupKey(attempt), () => []).add(answer);
       }
     }
 
@@ -1864,7 +1874,7 @@ class _GroupedAttemptsSectionState extends State<_GroupedAttemptsSection> {
       final topicName = topicAttempts.first.topicName;
       final incorrect = incorrectByTopic[e.key] ?? [];
       return _TopicAttemptGroup(
-        topicId: e.key,
+        topicId: topicAttempts.first.topicId,
         topicName: topicName,
         attempts: topicAttempts,
         incorrectAnswers: incorrect,
@@ -1957,10 +1967,14 @@ class _GroupedAttemptsSectionState extends State<_GroupedAttemptsSection> {
     }
   }
 
-  Future<void> _startCustomPractice(BuildContext context) async {
-    final selectedGroups = _groups
-        .where((g) => _selectedTopicIds.contains(g.topicId))
-        .toList();
+  Future<void> _startCustomPractice(
+    BuildContext context, [
+    List<_TopicAttemptGroup>? selectedGroupsOverride,
+  ]) async {
+    final selectedGroups = selectedGroupsOverride ??
+        _groups
+            .where((g) => _selectedTopicIds.contains(g.selectionKey))
+            .toList();
     final allIncorrectIds = <String>{};
 
     for (final group in selectedGroups) {
@@ -2046,6 +2060,32 @@ class _GroupedAttemptsSectionState extends State<_GroupedAttemptsSection> {
     }
   }
 
+  Future<void> _showAllAttemptHistory(
+    BuildContext context,
+    List<_TopicAttemptGroup> groups,
+  ) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: AppTheme.backgroundLight,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => _AllAttemptsHistorySheet(
+        groups: groups,
+        onRedo: (group) {
+          Navigator.of(sheetContext).pop();
+          _startRedoSession(context, group);
+        },
+        onStartCustomPractice: (selectedGroups) {
+          Navigator.of(sheetContext).pop();
+          _startCustomPractice(context, selectedGroups);
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.attempts.isEmpty) {
@@ -2094,6 +2134,7 @@ class _GroupedAttemptsSectionState extends State<_GroupedAttemptsSection> {
     }
 
     final groups = _groups;
+    final visibleGroups = _customPracticeMode ? groups : groups.take(7).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2160,23 +2201,44 @@ class _GroupedAttemptsSectionState extends State<_GroupedAttemptsSection> {
         const SizedBox(height: 10),
 
         // Topic cards
-        ...groups.map(
+        ...visibleGroups.map(
           (group) => _TopicAttemptCard(
+            key: ValueKey(group.selectionKey),
             group: group,
             isCustomPracticeMode: _customPracticeMode,
-            isSelected: _selectedTopicIds.contains(group.topicId),
+            isSelected: _selectedTopicIds.contains(group.selectionKey),
+            isExpanded: _expandedTopicIds.contains(group.selectionKey),
+            onToggleExpanded: () {
+              setState(() {
+                if (!_expandedTopicIds.add(group.selectionKey)) {
+                  _expandedTopicIds.remove(group.selectionKey);
+                }
+              });
+            },
             onToggleSelect: () {
               setState(() {
-                if (_selectedTopicIds.contains(group.topicId)) {
-                  _selectedTopicIds.remove(group.topicId);
+                if (_selectedTopicIds.contains(group.selectionKey)) {
+                  _selectedTopicIds.remove(group.selectionKey);
                 } else {
-                  _selectedTopicIds.add(group.topicId);
+                  _selectedTopicIds.add(group.selectionKey);
                 }
               });
             },
             onRedo: () => _startRedoSession(context, group),
           ),
         ),
+
+        if (!_customPracticeMode && groups.length > 7) ...[
+          const SizedBox(height: 2),
+          SizedBox(
+            width: double.infinity,
+            child: TextButton.icon(
+              onPressed: () => _showAllAttemptHistory(context, groups),
+              icon: const Icon(Icons.history_rounded),
+              label: Text('View all attempt history (${groups.length} topics)'),
+            ),
+          ),
+        ],
 
         // Start Custom Practice button
         if (_customPracticeMode && _selectedTopicIds.isNotEmpty) ...[
@@ -2211,30 +2273,166 @@ class _GroupedAttemptsSectionState extends State<_GroupedAttemptsSection> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+class _AllAttemptsHistorySheet extends StatefulWidget {
+  final List<_TopicAttemptGroup> groups;
+  final ValueChanged<_TopicAttemptGroup> onRedo;
+  final ValueChanged<List<_TopicAttemptGroup>> onStartCustomPractice;
+
+  const _AllAttemptsHistorySheet({
+    required this.groups,
+    required this.onRedo,
+    required this.onStartCustomPractice,
+  });
+
+  @override
+  State<_AllAttemptsHistorySheet> createState() =>
+      _AllAttemptsHistorySheetState();
+}
+
+class _AllAttemptsHistorySheetState
+    extends State<_AllAttemptsHistorySheet> {
+  final Set<String> _expandedTopicIds = {};
+  final Set<String> _selectedTopicIds = {};
+  bool _customPracticeMode = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return FractionallySizedBox(
+      heightFactor: 0.92,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+            child: Row(
+              children: [
+                const Icon(Icons.history_rounded, color: AppTheme.primary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'All Attempt History',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _customPracticeMode = !_customPracticeMode;
+                      if (!_customPracticeMode) _selectedTopicIds.clear();
+                    });
+                  },
+                  icon: Icon(
+                    _customPracticeMode
+                        ? Icons.close_rounded
+                        : Icons.playlist_add_rounded,
+                    size: 17,
+                  ),
+                  label: Text(_customPracticeMode ? 'Cancel' : 'Custom Practice'),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  tooltip: 'Close',
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: widget.groups.length,
+              itemBuilder: (context, index) {
+                final group = widget.groups[index];
+                final isExpanded = _expandedTopicIds.contains(
+                  group.selectionKey,
+                );
+                return _TopicAttemptCard(
+                  key: ValueKey('history-${group.selectionKey}'),
+                  group: group,
+                  isCustomPracticeMode: _customPracticeMode,
+                  isSelected: _selectedTopicIds.contains(group.selectionKey),
+                  isExpanded: isExpanded,
+                  onToggleExpanded: () {
+                    setState(() {
+                      if (!_expandedTopicIds.add(group.selectionKey)) {
+                        _expandedTopicIds.remove(group.selectionKey);
+                      }
+                    });
+                  },
+                  onToggleSelect: () {
+                    setState(() {
+                      if (!_selectedTopicIds.add(group.selectionKey)) {
+                        _selectedTopicIds.remove(group.selectionKey);
+                      }
+                    });
+                  },
+                  onRedo: () => widget.onRedo(group),
+                );
+              },
+            ),
+          ),
+          if (_customPracticeMode && _selectedTopicIds.isNotEmpty)
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      final selectedGroups = widget.groups
+                          .where(
+                            (group) => _selectedTopicIds.contains(
+                              group.selectionKey,
+                            ),
+                          )
+                          .toList();
+                      widget.onStartCustomPractice(selectedGroups);
+                    },
+                    icon: const Icon(Icons.play_arrow_rounded),
+                    label: Text(
+                      'Start Custom Practice (${_selectedTopicIds.length} topic${_selectedTopicIds.length == 1 ? '' : 's'})',
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 // Topic Attempt Card (expandable)
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _TopicAttemptCard extends StatefulWidget {
+class _TopicAttemptCard extends StatelessWidget {
   final _TopicAttemptGroup group;
   final bool isCustomPracticeMode;
   final bool isSelected;
+  final bool isExpanded;
+  final VoidCallback onToggleExpanded;
   final VoidCallback onToggleSelect;
   final VoidCallback onRedo;
 
   const _TopicAttemptCard({
+    super.key,
     required this.group,
     required this.isCustomPracticeMode,
     required this.isSelected,
+    required this.isExpanded,
+    required this.onToggleExpanded,
     required this.onToggleSelect,
     required this.onRedo,
   });
-
-  @override
-  State<_TopicAttemptCard> createState() => _TopicAttemptCardState();
-}
-
-class _TopicAttemptCardState extends State<_TopicAttemptCard> {
-  bool _expanded = false;
 
   String _formatDate(DateTime dt) {
     final now = DateTime.now();
@@ -2247,7 +2445,7 @@ class _TopicAttemptCardState extends State<_TopicAttemptCard> {
 
   @override
   Widget build(BuildContext context) {
-    final group = widget.group;
+    final group = this.group;
     final bestScore = group.bestScore;
     final scoreColor = bestScore >= 70
         ? const Color(0xFF2E7D32)
@@ -2260,7 +2458,7 @@ class _TopicAttemptCardState extends State<_TopicAttemptCard> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: widget.isSelected
+        border: isSelected
             ? Border.all(color: AppTheme.primary, width: 2)
             : Border.all(color: Colors.grey.shade100),
         boxShadow: [
@@ -2275,32 +2473,30 @@ class _TopicAttemptCardState extends State<_TopicAttemptCard> {
         children: [
           // Main row
           InkWell(
-            onTap: widget.isCustomPracticeMode
-                ? widget.onToggleSelect
-                : () => setState(() => _expanded = !_expanded),
+            onTap: isCustomPracticeMode ? onToggleSelect : onToggleExpanded,
             borderRadius: BorderRadius.circular(14),
             child: Padding(
               padding: const EdgeInsets.all(14),
               child: Row(
                 children: [
                   // Checkbox in custom practice mode
-                  if (widget.isCustomPracticeMode) ...[
+                  if (isCustomPracticeMode) ...[
                     Container(
                       width: 22,
                       height: 22,
                       decoration: BoxDecoration(
-                        color: widget.isSelected
+                        color: isSelected
                             ? AppTheme.primary
                             : Colors.transparent,
                         borderRadius: BorderRadius.circular(6),
                         border: Border.all(
-                          color: widget.isSelected
+                          color: isSelected
                               ? AppTheme.primary
                               : Colors.grey.shade400,
                           width: 2,
                         ),
                       ),
-                      child: widget.isSelected
+                      child: isSelected
                           ? const Icon(
                               Icons.check,
                               color: Colors.white,
@@ -2392,14 +2588,31 @@ class _TopicAttemptCardState extends State<_TopicAttemptCard> {
                       ),
                     ],
                   ),
-                  if (!widget.isCustomPracticeMode) ...[
+                  if (!isCustomPracticeMode) ...[
                     const SizedBox(width: 6),
-                    Icon(
-                      _expanded
-                          ? Icons.keyboard_arrow_up_rounded
-                          : Icons.keyboard_arrow_down_rounded,
-                      color: Colors.grey.shade400,
-                      size: 20,
+                    TextButton.icon(
+                      onPressed: onToggleExpanded,
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppTheme.primaryDark,
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 6,
+                        ),
+                      ),
+                      icon: Icon(
+                        isExpanded
+                            ? Icons.keyboard_arrow_up_rounded
+                            : Icons.keyboard_arrow_down_rounded,
+                        size: 18,
+                      ),
+                      label: Text(
+                        isExpanded ? 'Hide' : 'View history',
+                        style: GoogleFonts.dmSans(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ),
                   ],
                 ],
@@ -2408,7 +2621,7 @@ class _TopicAttemptCardState extends State<_TopicAttemptCard> {
           ),
 
           // Expanded details
-          if (_expanded && !widget.isCustomPracticeMode) ...[
+          if (isExpanded && !isCustomPracticeMode) ...[
             Divider(height: 1, color: Colors.grey.shade100),
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
@@ -2433,11 +2646,55 @@ class _TopicAttemptCardState extends State<_TopicAttemptCard> {
                   ),
                   const SizedBox(height: 12),
 
+                  Text(
+                    'Attempt history',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF444444),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ...group.attempts.map((attempt) {
+                    final score = attempt.totalQuestions == 0
+                        ? 0.0
+                        : attempt.correctAnswers /
+                            attempt.totalQuestions *
+                            100;
+                    final time = attempt.createdAt.toLocal();
+                    final minute = time.minute.toString().padLeft(2, '0');
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '${time.day}/${time.month}/${time.year}  ${time.hour}:$minute',
+                              style: GoogleFonts.dmSans(
+                                fontSize: 11,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            '${attempt.correctAnswers}/${attempt.totalQuestions} (${score.toStringAsFixed(0)}%)',
+                            style: GoogleFonts.dmSans(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF444444),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                  const SizedBox(height: 4),
+
                   // Redo button
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
-                      onPressed: widget.onRedo,
+                      onPressed: onRedo,
                       icon: const Icon(Icons.replay_rounded, size: 16),
                       label: Text(
                         group.incorrectCount > 0

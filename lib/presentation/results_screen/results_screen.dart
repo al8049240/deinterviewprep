@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../routes/app_routes.dart';
 import '../../theme/app_theme.dart';
@@ -68,6 +69,36 @@ class _ResultsScreenState extends State<ResultsScreen>
     if (_accuracyPercent >= 75) return AppTheme.success;
     if (_accuracyPercent >= 50) return AppTheme.warning;
     return AppTheme.error;
+  }
+
+  Future<void> _shareResults() async {
+    final accuracy = _accuracyPercent.toStringAsFixed(0);
+    final text =
+        'I scored ${widget.correctAnswers}/${widget.totalQuestions} ($accuracy%) '
+        'on the ${widget.topicName} quiz in DE Interview Prep. '
+        'Time: $_formattedTime.';
+
+    try {
+      final box = context.findRenderObject() as RenderBox?;
+      await SharePlus.instance.share(
+        ShareParams(
+          text: text,
+          title: 'DE Interview Prep Quiz Result',
+          subject: 'My ${widget.topicName} quiz result',
+          sharePositionOrigin: box == null
+              ? null
+              : box.localToGlobal(Offset.zero) & box.size,
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sharing is not available on this device.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   @override
@@ -168,7 +199,7 @@ class _ResultsScreenState extends State<ResultsScreen>
             ),
           ),
         IconButton(
-          onPressed: () {},
+          onPressed: _shareResults,
           icon: const Icon(Icons.share_rounded, color: Colors.white),
           tooltip: 'Share Results',
         ),
