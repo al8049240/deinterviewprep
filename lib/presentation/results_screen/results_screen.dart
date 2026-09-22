@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../routes/app_routes.dart';
+import '../../services/review_prompt_service.dart';
 import '../../theme/app_theme.dart';
+import '../settings_screen/review_form_sheet.dart';
 import './widgets/results_action_buttons_widget.dart';
 import './widgets/results_header_widget.dart';
 import './widgets/results_metrics_row_widget.dart';
@@ -46,6 +49,7 @@ class _ResultsScreenState extends State<ResultsScreen>
   late Animation<double> _scoreAnim;
   late Animation<double> _fadeAnim;
   late Animation<Offset> _slideAnim;
+  bool _reviewPromptChecked = false;
 
   double get _accuracyPercent => widget.totalQuestions == 0
       ? 0
@@ -131,6 +135,93 @@ class _ResultsScreenState extends State<ResultsScreen>
         _scoreController.forward();
       }
     });
+    Future.delayed(const Duration(seconds: 2), _maybeShowReviewPrompt);
+  }
+
+  Future<void> _maybeShowReviewPrompt() async {
+    if (!mounted || _reviewPromptChecked) return;
+    _reviewPromptChecked = true;
+    try {
+      final shouldShow =
+          await ReviewPromptService.instance.shouldShowAutomaticPrompt();
+      if (!mounted || !shouldShow) return;
+      await ReviewPromptService.instance.recordPromptShown();
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          title: Row(
+            children: [
+              const Expanded(child: Text('Share your experience')),
+              IconButton(
+                tooltip: 'Don’t ask again',
+                onPressed: () async {
+                  await ReviewPromptService.instance.dismiss();
+                  if (dialogContext.mounted) Navigator.pop(dialogContext);
+                },
+                icon: const Icon(Icons.close_rounded),
+              ),
+            ],
+          ),
+          content: const Text(
+            'You’ve completed several quizzes. Would you like to share feedback about DE Interview Prep?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                await ReviewPromptService.instance.snooze();
+                if (!dialogContext.mounted) return;
+                Navigator.pop(dialogContext);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'You can leave feedback anytime: Settings → Contact Us → Leave a Review.',
+                    ),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
+              child: const Text('Not now'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                _openReviewForm();
+              },
+              child: const Text('Share feedback'),
+            ),
+          ],
+        ),
+      );
+    } catch (_) {
+      // Review prompting is non-critical and must never interrupt results.
+    }
+  }
+
+  Future<void> _openReviewForm() async {
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => ReviewFormSheet(onOpenPlayStore: _openPlayStoreReview),
+    );
+  }
+
+  Future<void> _openPlayStoreReview() async {
+    final marketUri = Uri.parse(
+      'market://details?id=com.aa.deinterviewprep',
+    );
+    final webUri = Uri.parse(
+      'https://play.google.com/store/apps/details?id=com.aa.deinterviewprep',
+    );
+    try {
+      if (await launchUrl(marketUri, mode: LaunchMode.externalApplication)) {
+        return;
+      }
+    } catch (_) {}
+    await launchUrl(webUri, mode: LaunchMode.externalApplication);
   }
 
   @override

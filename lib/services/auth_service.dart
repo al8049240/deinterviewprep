@@ -152,11 +152,27 @@ class AuthService {
       );
     }
 
-    final response = await _client.functions.invoke(
-      'delete-account',
-      headers: {'Authorization': 'Bearer $accessToken'},
-      body: {'confirmation': 'DELETE_MY_ACCOUNT'},
-    );
+    late final FunctionResponse response;
+    try {
+      response = await _client.functions.invoke(
+        'delete-account',
+        headers: {'Authorization': 'Bearer $accessToken'},
+        body: {'confirmation': 'DELETE_MY_ACCOUNT'},
+      );
+    } on FunctionException catch (error) {
+      final details = error.details;
+      final serverMessage = details is Map
+          ? details['error']?.toString()
+          : null;
+      throw AuthException(
+        serverMessage ??
+            'Account deletion is temporarily unavailable. Please try again later.',
+      );
+    } catch (_) {
+      throw AuthException(
+        'Could not connect to the account deletion service. Please check your connection and try again.',
+      );
+    }
     if (response.status < 200 || response.status >= 300) {
       final data = response.data;
       final message = data is Map

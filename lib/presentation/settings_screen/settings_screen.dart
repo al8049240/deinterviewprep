@@ -6,8 +6,10 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../routes/app_routes.dart';
 import '../../services/auth_service.dart';
 import '../../services/reminder_service.dart';
+import '../../services/review_prompt_service.dart';
 import '../../theme/app_theme.dart';
 import 'faq_screen.dart';
+import 'review_form_sheet.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -172,22 +174,24 @@ class SettingsScreen extends StatelessWidget {
     final appUrl = configuredUrl.isEmpty ? _playStoreUrl : configuredUrl;
     final renderBox = context.findRenderObject() as RenderBox?;
     const overview =
-        '''I’m using DE Interview Prep to prepare for data engineering interviews. The app helps me practice and review through several features:
+        '''Cracking data engineering interviews takes more than memorizing definitions—it requires knowing how data pipelines break in production.
 
-• Data Dev Stories — practical stories and lessons from real data engineering work.
+I’ve been using DE Interview Prep to bridge the gap between theory and actual engineering scenarios, and it has made a huge difference in my prep routine.
 
-• Interview Quizzes — quizzes covering multiple data engineering topics such as SQL, Python, databases, cloud, Spark, Airflow, data modeling, ETL/ELT, and system design.
+Here is what stands out:
 
-• Flashcards — quick reviews of important concepts, definitions, commands, and interview questions.
+• Real-World Scenarios & Dev Stories: Context-rich lessons and architectural use cases that mirror what you actually face in senior technical rounds.
 
-• Real-World Use Cases — practical scenarios that help me understand how data engineering concepts are applied in real projects.
+• Targeted Technical Quizzes: Deep dives across SQL, Python, Spark, Airflow, ETL/ELT pipelines, distributed systems, and modern data modeling.
 
-• Create Your Own Content — users can create and save their own flashcards, real-world use cases, and data engineering stories to build a personalized study library.
+• Rapid Flashcards: Quick-hit refreshers for syntax, terminal commands, and core system design concepts.
 
-• Quiz Statistics — track quiz performance, including questions answered, correct/incorrect answers, accuracy, progress, and areas that need more practice.
+• Custom Knowledge Base: You can build, save, and categorize your own flashcards, project stories, and notes as you learn.
 
-The goal is to make data engineering interview preparation practical, interactive, and personalized, combining knowledge review with real-world experience.''';
-    final message = '$overview\n\nDownload DE Interview Prep: $appUrl';
+• Granular Progress Metrics: Track accuracy, identify weak technical domains, and focus review time where it matters most.
+
+If you are preparing for DE rounds or leveling up your system design skills, check it out here:''';
+    final message = '$overview\n\n👉 Download on Google Play: $appUrl';
 
     try {
       await SharePlus.instance.share(
@@ -238,10 +242,14 @@ class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
       if (!mounted) return;
       setState(() {
         _deleting = false;
-        _error = error
-            .toString()
-            .replaceFirst('AuthException(message: ', '')
-            .replaceFirst('Exception: ', '');
+        final raw = error.toString();
+        _error = raw.contains('FunctionsFetchException') ||
+                raw.contains('ClientFailed to fetch')
+            ? 'Could not connect to the account deletion service. Please try again later.'
+            : raw
+                .replaceFirst('AuthException(message: ', '')
+                .replaceFirst('Exception: ', '')
+                .replaceFirst(RegExp(r', statusCode:.*$'), '');
       });
     }
   }
@@ -691,8 +699,26 @@ class _SetReminderSheetState extends State<_SetReminderSheet> {
 
 // ── Contact Us Sheet ──────────────────────────────────────────────────────────
 
-class _ContactUsSheet extends StatelessWidget {
+class _ContactUsSheet extends StatefulWidget {
   const _ContactUsSheet();
+
+  @override
+  State<_ContactUsSheet> createState() => _ContactUsSheetState();
+}
+
+class _ContactUsSheetState extends State<_ContactUsSheet> {
+  bool _showReviewPrompt = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadReviewPromptState();
+  }
+
+  Future<void> _loadReviewPromptState() async {
+    final shouldShow = await ReviewPromptService.instance.shouldShowPrompt();
+    if (mounted) setState(() => _showReviewPrompt = shouldShow);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -808,15 +834,17 @@ class _ContactUsSheet extends StatelessWidget {
                   '[Optional: add an example, link, or screenshot]\n',
             ),
           ),
-          const SizedBox(height: 10),
-          _ContactOption(
-            icon: Icons.star_outline_rounded,
-            iconColor: const Color(0xFF6A1B9A),
-            iconBg: const Color(0xFFF3E5F5),
-            title: 'Leave a Review',
-            subtitle: 'Rate DE Interview Prep on Google Play',
-            onTap: () => _openPlayStoreReview(context),
-          ),
+          if (_showReviewPrompt) ...[
+            const SizedBox(height: 10),
+            _ContactOption(
+              icon: Icons.star_outline_rounded,
+              iconColor: const Color(0xFF6A1B9A),
+              iconBg: const Color(0xFFF3E5F5),
+              title: 'Leave a Review',
+              subtitle: 'Send feedback or review on Google Play',
+              onTap: () => _showReviewForm(context),
+            ),
+          ],
         ],
       ),
     );
@@ -876,6 +904,18 @@ class _ContactUsSheet extends StatelessWidget {
         ),
       );
     }
+  }
+
+  Future<void> _showReviewForm(BuildContext context) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => ReviewFormSheet(
+        onOpenPlayStore: () => _openPlayStoreReview(context),
+      ),
+    );
+    await _loadReviewPromptState();
   }
 }
 

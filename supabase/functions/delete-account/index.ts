@@ -4,6 +4,8 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers':
     'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Max-Age': '86400',
 }
 
 Deno.serve(async (request) => {
@@ -36,18 +38,16 @@ Deno.serve(async (request) => {
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
-    const anonKey = Deno.env.get('SUPABASE_ANON_KEY')
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-    if (!supabaseUrl || !anonKey || !serviceRoleKey) {
+    if (!supabaseUrl || !serviceRoleKey) {
       throw new Error('Required Supabase environment variables are missing.')
     }
 
     const token = authorization.slice('Bearer '.length)
-    const authClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: authorization } },
+    const adminClient = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     })
-    const { data, error: userError } = await authClient.auth.getUser(token)
+    const { data, error: userError } = await adminClient.auth.getUser(token)
     if (userError || !data.user) {
       return Response.json(
         { error: 'Invalid or expired session.' },
@@ -55,9 +55,6 @@ Deno.serve(async (request) => {
       )
     }
 
-    const adminClient = createClient(supabaseUrl, serviceRoleKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    })
     const { error: deleteError } = await adminClient.auth.admin.deleteUser(
       data.user.id,
     )
