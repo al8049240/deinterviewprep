@@ -11,7 +11,6 @@ import '../../providers/bookmark_provider.dart';
 import '../../providers/statistics_provider.dart';
 import '../paywall_screen/paywall_screen.dart';
 import '../question_bank_screen/question_bank_screen.dart';
-import '../developer_experiences_screen/developer_experiences_list_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -239,14 +238,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                   const SizedBox(height: 10),
                   _QuickActionCard(
-                    icon: Icons.code_rounded,
-                    title: 'Interview Code Library',
+                    icon: Icons.auto_stories_rounded,
+                    title: 'Data Dev Stories',
                     subtitle: isPro
-                        ? 'SQL & Python practice'
+                        ? 'Production incidents, lessons & trade-offs'
                         : 'Serious Mode feature — unlock to access',
-                    color: isPro ? const Color(0xFF1565C0) : Colors.grey,
+                    color: isPro ? const Color(0xFF37474F) : Colors.grey,
                     onTap: isPro
-                        ? () => context.push(AppRoutes.codePlaygroundScreen)
+                        ? () => context.push(AppRoutes.devStoriesScreen)
                         : _showPaywall,
                   ),
                   const SizedBox(height: 10),
@@ -276,12 +275,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     const SizedBox(height: 20),
                   ],
 
-                  // ── Developer's Real Experiences Banner ─────────────────────
-                  _DevExperiencesBannerCard(
-                    isSeriousMode: isPro,
-                    onUnlockTap: _showUnlockSeriousModeSheet,
-                  ),
-                  const SizedBox(height: 12),
                   const _CheatsheetComingSoonCard(),
                   const SizedBox(height: 24),
                 ],
@@ -391,7 +384,7 @@ class _UnlockSeriousModeSheet extends StatelessWidget {
                   elevation: 0,
                 ),
                 child: Text(
-                  '\$9.99 launch offer — Lifetime access',
+                  ProService().purchaseCtaText,
                   style: GoogleFonts.dmSans(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
@@ -426,8 +419,7 @@ class _UpgradeComparisonTable extends StatelessWidget {
       ['Flashcards', 'Limited', '110+'],
       ['Interview Scenarios', 'Limited', '24+'],
       ['Data Dev Stories', '✗', '✓'],
-      ['Interview Code Library', '✗', '✓'],
-      ['SQL/Python Practice', '✗', '✓'],
+      ['SQL/Python/PySpark Practice', '✗', '✓'],
       ['Custom Quizzes', '✗', '✓'],
       ['Progress Statistics', 'Locked', 'Full'],
       ['All Difficulty Levels', '✗', '✓'],
@@ -539,130 +531,6 @@ class _UpgradeComparisonTable extends StatelessWidget {
             ),
           );
         }).toList(),
-      ),
-    );
-  }
-}
-
-// ── Developer's Real Experiences Banner Card ──────────────────────────────────
-
-class _DevExperiencesBannerCard extends StatelessWidget {
-  final bool isSeriousMode;
-  final VoidCallback onUnlockTap;
-
-  const _DevExperiencesBannerCard({
-    required this.isSeriousMode,
-    required this.onUnlockTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () {
-          if (!isSeriousMode) {
-            onUnlockTap();
-          } else {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const DeveloperExperiencesListScreen(),
-              ),
-            );
-          }
-        },
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                const Color(0xFF37474F).withAlpha(22),
-                const Color(0xFF546E7A).withAlpha(14),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFF37474F).withAlpha(70)),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // Left: emoji icon
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF37474F).withAlpha(20),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Center(
-                  child: Text('🗿', style: TextStyle(fontSize: 24)),
-                ),
-              ),
-              const SizedBox(width: 14),
-              // Center: header + subtitle
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Data Dev Stories',
-                      style: GoogleFonts.dmSans(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: const Color(0xFF263238),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Unfiltered production war stories & high-stakes trade-offs...',
-                      style: GoogleFonts.dmSans(
-                        fontSize: 12,
-                        color: const Color(0xFF546E7A),
-                        height: 1.4,
-                        fontStyle: FontStyle.italic,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (!isSeriousMode) ...[
-                      const SizedBox(height: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF37474F),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          '🔒 Serious Mode Only',
-                          style: GoogleFonts.dmSans(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              // Right: chevron
-              Icon(
-                Icons.chevron_right,
-                color: const Color(0xFF546E7A),
-                size: 24,
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -1173,7 +1041,7 @@ class _UpgradeBanner extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Upgrade to Serious Mode — \$9.99 launch offer',
+                    'Upgrade to Serious Mode — ${ProService().displayPrice}${ProService.isLaunchPromotion ? ' launch offer' : ''}',
                     style: GoogleFonts.dmSans(
                       fontSize: 15,
                       fontWeight: FontWeight.w700,

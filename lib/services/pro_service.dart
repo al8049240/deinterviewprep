@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class PerformanceEntry {
   final DateTime date;
@@ -43,14 +44,15 @@ class ProService extends ChangeNotifier {
   /// --dart-define=IAP_LAUNCH_PROMOTION=true
   static const String launchProductId = 'de_interview_prep_lifetime_launch';
   static const String lifetimeProductId = 'de_interview_prep_lifetime';
-  static const bool isLaunchPromotion = bool.fromEnvironment(
+  static const bool _launchPromotionEnabled = bool.fromEnvironment(
     'IAP_LAUNCH_PROMOTION',
     defaultValue: true,
   );
-  static const bool _debugProOverride = bool.fromEnvironment(
-    'DEV_UNLOCK_PRO',
-    defaultValue: false,
+  static const String _launchStartUtcValue = String.fromEnvironment(
+    'IAP_LAUNCH_START_UTC',
+    defaultValue: '',
   );
+  static const int launchPromotionDays = 45;
   static const Set<String> _validProductIds = {
     launchProductId,
     lifetimeProductId,
@@ -62,6 +64,7 @@ class ProService extends ChangeNotifier {
   static const String _performanceKey = 'performance_entries';
 
   bool _isProUnlocked = false;
+  bool _isServerProUnlocked = false;
   bool _isInitialized = false;
   bool _storeAvailable = false;
   bool _isLoadingStore = false;
@@ -72,22 +75,43 @@ class ProService extends ChangeNotifier {
   // Kept for the lifetime of this app-scoped singleton.
   // ignore: unused_field
   StreamSubscription<List<PurchaseDetails>>? _purchaseSubscription;
+  Timer? _purchaseWatchdog;
+  // Kept for the lifetime of this app-scoped singleton.
+  // ignore: unused_field
+  StreamSubscription<AuthState>? _authSubscription;
   int _dailyStreak = 0;
   int _cardsMastered = 0;
   List<PerformanceEntry> _performanceHistory = [];
 
-  /// Debug-only override for testing premium screens without a store purchase.
-  /// Profile and release builds ignore the flag even if it is supplied.
+  /// Debug builds always unlock premium screens for local development.
+  /// Profile and release builds still require a local or server entitlement.
   bool get isProUnlocked =>
-      _isProUnlocked || (kDebugMode && _debugProOverride);
+      _isProUnlocked ||
+      _isServerProUnlocked ||
+      kDebugMode;
   bool get storeAvailable => _storeAvailable;
   bool get isLoadingStore => _isLoadingStore;
   bool get purchasePending => _purchasePending;
   bool get restorePending => _restorePending;
   String? get purchaseError => _purchaseError;
   ProductDetails? get lifetimeProduct => _lifetimeProduct;
+  static DateTime? get launchStartsAt =>
+      DateTime.tryParse(_launchStartUtcValue)?.toUtc();
+  static DateTime? get launchEndsAt =>
+      launchStartsAt?.add(const Duration(days: launchPromotionDays));
+  static bool get isLaunchPromotion {
+    if (!_launchPromotionEnabled) return false;
+    final start = launchStartsAt;
+    if (start == null) return true;
+    final now = DateTime.now().toUtc();
+    return !now.isBefore(start) && now.isBefore(launchEndsAt!);
+  }
+
   String get displayPrice =>
-      _lifetimeProduct?.price ?? (isLaunchPromotion ? r'$9.99' : r'$14.99');
+      _lifetimeProduct?.price ?? (isLaunchPromotion ? r'$5.00' : r'$10.00');
+  String get purchaseCtaText => isLaunchPromotion
+      ? '$displayPrice launch offer — Lifetime access'
+      : '$displayPrice — Lifetime access';
   String get activeProductId =>
       isLaunchPromotion ? launchProductId : lifetimeProductId;
   int get dailyStreak => _dailyStreak;
@@ -107,6 +131,16 @@ class ProService extends ChangeNotifier {
     _cardsMastered = prefs.getInt(_cardsMasteredKey) ?? 0;
     await _updateStreak(prefs);
     await _loadPerformanceHistory(prefs);
+    await refreshEntitlement();
+    if (Supabase.instance.isInitialized) {
+      _authSubscription = Supabase.instance.client.auth.onAuthStateChange
+          .listen(
+            (_) => refreshEntitlement(),
+            onError: (Object error) {
+              debugPrint('Failed to refresh Pro entitlement: $error');
+            },
+          );
+    }
     notifyListeners();
 
     if (kIsWeb) return;
@@ -120,6 +154,46 @@ class ProService extends ChangeNotifier {
       },
     );
     await _loadStoreProduct();
+  }
+
+  /// Refreshes the signed-in user's server-managed Pro entitlement.
+  ///
+  /// The client only has SELECT permission. Entitlements must be granted by a
+  /// trusted backend or an administrator, never by the mobile application.
+  Future<void> refreshEntitlement() async {
+    if (!Supabase.instance.isInitialized) {
+      _isServerProUnlocked = false;
+      notifyListeners();
+      return;
+    }
+
+    final client = Supabase.instance.client;
+    final user = client.auth.currentUser;
+    if (user == null) {
+      _isServerProUnlocked = false;
+      notifyListeners();
+      return;
+    }
+
+    try {
+      final result = await client
+          .schema('de_mobile_app')
+          .from('user_entitlements')
+          .select('is_pro, expires_at')
+          .eq('user_id', user.id)
+          .maybeSingle();
+      final expiresAtValue = result?['expires_at'] as String?;
+      final expiresAt = expiresAtValue == null
+          ? null
+          : DateTime.tryParse(expiresAtValue)?.toUtc();
+      _isServerProUnlocked =
+          result?['is_pro'] == true &&
+          (expiresAt == null || expiresAt.isAfter(DateTime.now().toUtc()));
+    } catch (error) {
+      _isServerProUnlocked = false;
+      debugPrint('Failed to load Pro entitlement: $error');
+    }
+    notifyListeners();
   }
 
   Future<void> _loadStoreProduct() async {
@@ -153,6 +227,11 @@ class ProService extends ChangeNotifier {
 
   Future<bool> purchaseLifetime() async {
     if (_isProUnlocked) return true;
+    if (!_isUserSignedIn) {
+      _purchaseError = 'Sign in before purchasing Serious Mode.';
+      notifyListeners();
+      return false;
+    }
     if (_lifetimeProduct == null) {
       await _loadStoreProduct();
     }
@@ -169,10 +248,25 @@ class ProService extends ChangeNotifier {
         _purchasePending = false;
         _purchaseError = 'The purchase could not be started.';
         notifyListeners();
+      } else {
+        _purchaseWatchdog?.cancel();
+        _purchaseWatchdog = Timer(const Duration(seconds: 60), () async {
+          if (!_purchasePending) return;
+          _purchasePending = false;
+          _purchaseError = 'Checking your existing Google Play purchase…';
+          notifyListeners();
+          await restorePurchases();
+        });
       }
       return started;
-    } catch (_) {
+    } catch (error) {
       _purchasePending = false;
+      if (_isAlreadyOwnedError(error)) {
+        _purchaseError = 'Purchase already owned. Restoring access…';
+        notifyListeners();
+        await restorePurchases();
+        return false;
+      }
       _purchaseError = 'The purchase could not be started. Please try again.';
       notifyListeners();
       return false;
@@ -180,30 +274,45 @@ class ProService extends ChangeNotifier {
   }
 
   Future<void> _handlePurchaseUpdates(List<PurchaseDetails> purchases) async {
+    var shouldRestoreOwnedPurchase = false;
     for (final purchase in purchases) {
       if (!_validProductIds.contains(purchase.productID)) continue;
+      _purchaseWatchdog?.cancel();
       switch (purchase.status) {
         case PurchaseStatus.pending:
           _purchasePending = true;
           break;
         case PurchaseStatus.purchased:
         case PurchaseStatus.restored:
-          // The stores have validated the transaction. Before a large-scale
-          // launch, also send serverVerificationData to a backend for
-          // server-side receipt verification and entitlement synchronization.
-          if (purchase.verificationData.serverVerificationData.isNotEmpty) {
-            await _grantProEntitlement();
+          try {
+            final verificationData =
+                purchase.verificationData.serverVerificationData;
+            if (verificationData.isEmpty) {
+              throw const FormatException('The purchase receipt is empty.');
+            }
+            await _verifyAndGrantProEntitlement(
+              productId: purchase.productID,
+              verificationData: verificationData,
+              source: purchase.verificationData.source,
+            );
             _purchaseError = null;
-          } else {
-            _purchaseError = 'The purchase receipt could not be verified.';
+          } catch (error) {
+            debugPrint('Purchase verification failed: $error');
+            _purchaseError = _purchaseVerificationError(error);
+          } finally {
+            _purchasePending = false;
+            _restorePending = false;
           }
-          _purchasePending = false;
-          _restorePending = false;
           break;
         case PurchaseStatus.error:
           _purchasePending = false;
           _restorePending = false;
-          _purchaseError = purchase.error?.message ?? 'Purchase failed.';
+          if (_isAlreadyOwnedError(purchase.error)) {
+            _purchaseError = 'Purchase already owned. Restoring access…';
+            shouldRestoreOwnedPurchase = true;
+          } else {
+            _purchaseError = purchase.error?.message ?? 'Purchase failed.';
+          }
           break;
         case PurchaseStatus.canceled:
           _purchasePending = false;
@@ -211,27 +320,96 @@ class ProService extends ChangeNotifier {
           break;
       }
       if (purchase.pendingCompletePurchase) {
-        await InAppPurchase.instance.completePurchase(purchase);
+        try {
+          await InAppPurchase.instance.completePurchase(purchase);
+        } catch (error) {
+          debugPrint('Failed to complete store purchase: $error');
+          _purchaseError ??=
+              'Payment succeeded, but the store could not finish the purchase. '
+              'Tap Restore purchase to try again.';
+        }
       }
     }
     notifyListeners();
+    if (shouldRestoreOwnedPurchase) await restorePurchases();
   }
 
-  Future<void> _grantProEntitlement() async {
+  bool _isAlreadyOwnedError(Object? error) {
+    final text = error?.toString().toLowerCase() ?? '';
+    return text.contains('already own') ||
+        text.contains('already_owned') ||
+        text.contains('itemalreadyowned') ||
+        text.contains('item_already_owned');
+  }
+
+  Future<void> _verifyAndGrantProEntitlement({
+    required String productId,
+    required String verificationData,
+    required String source,
+  }) async {
+    if (!Supabase.instance.isInitialized || !_isUserSignedIn) {
+      throw StateError('Sign in before verifying a purchase.');
+    }
+
+    final response = await Supabase.instance.client.functions
+        .invoke(
+          'verify-play-purchase',
+          body: {
+            'productId': productId,
+            'purchaseToken': verificationData,
+            'source': source,
+          },
+        )
+        .timeout(const Duration(seconds: 30));
+
+    final data = response.data;
+    if (response.status < 200 ||
+        response.status >= 300 ||
+        data is! Map ||
+        data['isPro'] != true) {
+      final message = data is Map ? data['error']?.toString() : null;
+      throw StateError(message ?? 'The server rejected the purchase.');
+    }
+
+    // Keep the local cache for offline access only after server verification.
     final prefs = await SharedPreferences.getInstance();
+    _isServerProUnlocked = true;
     _isProUnlocked = true;
     await prefs.setBool(_proKey, true);
+  }
+
+  String _purchaseVerificationError(Object error) {
+    if (error is TimeoutException) {
+      return 'Payment succeeded, but verification timed out. '
+          'Tap Restore purchase to try again.';
+    }
+    final text = error.toString();
+    final prefix = text.indexOf(': ');
+    final message = prefix >= 0 ? text.substring(prefix + 2) : text;
+    return message.isEmpty
+        ? 'Payment succeeded, but verification failed. Tap Restore purchase.'
+        : message;
   }
 
   Future<void> _updateStreak(SharedPreferences prefs) async {
     final lastStudy = prefs.getString(_lastStudyKey);
     final today = DateTime.now();
-    final todayStr = '${today.year}-${today.month}-${today.day}';
+    final todayStr =
+        '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
 
     if (lastStudy == null) {
       _dailyStreak = 1;
     } else {
-      final last = DateTime.parse(lastStudy);
+      final parts = lastStudy.split('-');
+      final last =
+          DateTime.tryParse(lastStudy) ??
+          (parts.length == 3
+              ? DateTime(
+                  int.tryParse(parts[0]) ?? today.year,
+                  int.tryParse(parts[1]) ?? today.month,
+                  int.tryParse(parts[2]) ?? today.day,
+                )
+              : today);
       final diff = today.difference(last).inDays;
       if (diff == 0) {
         _dailyStreak = prefs.getInt(_streakKey) ?? 1;
@@ -358,6 +536,12 @@ class ProService extends ChangeNotifier {
   }
 
   Future<void> restorePurchases() async {
+    if (!_isUserSignedIn) {
+      _restorePending = false;
+      _purchaseError = 'Sign in before restoring purchases.';
+      notifyListeners();
+      return;
+    }
     if (kIsWeb || !_storeAvailable) {
       _purchaseError = 'Purchase restoration is unavailable on this device.';
       notifyListeners();
@@ -375,5 +559,10 @@ class ProService extends ChangeNotifier {
       _purchaseError = 'Could not restore purchases. Please try again.';
       notifyListeners();
     }
+  }
+
+  bool get _isUserSignedIn {
+    if (!Supabase.instance.isInitialized) return false;
+    return Supabase.instance.client.auth.currentUser != null;
   }
 }

@@ -3,6 +3,8 @@ class FlashcardModel {
   final String front;
   final String back;
   final String category;
+  final int? topicId;
+  final int? subtopicId;
   final List<String> tags;
   bool isMastered;
 
@@ -11,6 +13,8 @@ class FlashcardModel {
     required this.front,
     required this.back,
     required this.category,
+    this.topicId,
+    this.subtopicId,
     this.tags = const [],
     this.isMastered = false,
   });
@@ -27,6 +31,8 @@ class FlashcardModel {
       front: row['name']?.toString() ?? '',
       back: row['explanation']?.toString() ?? '',
       category: category,
+      topicId: (row['topic_id'] as num?)?.toInt(),
+      subtopicId: (row['subtopic_id'] as num?)?.toInt(),
       tags:
           (row['tags'] as List<dynamic>?)?.map((t) => t.toString()).toList() ??
           [],

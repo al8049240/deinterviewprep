@@ -435,14 +435,16 @@ class _DifficultyPill extends StatelessWidget {
 
   Color get _color {
     switch (difficulty.toLowerCase()) {
+      case 'easy':
       case 'junior':
         return const Color(0xFF2E7D32);
+      case 'medium':
       case 'middle':
         return const Color(0xFFE65100);
+      case 'hard':
       case 'senior':
-        return const Color(0xFFC62828);
       case 'leader':
-        return const Color(0xFF6A1B9A);
+        return const Color(0xFFC62828);
       default:
         return Colors.grey.shade600;
     }

@@ -766,7 +766,7 @@ Process finished with exit code 0''';
                     ),
                   ),
                   child: Text(
-                    'Unlock Full Access (\$19.99)',
+                    'Unlock Full Access (\$5.00)',
                     style: GoogleFonts.dmSans(
                       fontSize: 15,
                       fontWeight: FontWeight.w700,

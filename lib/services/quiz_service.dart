@@ -5,6 +5,23 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import './offline_quiz_cache.dart';
 import './supabase_service.dart';
 
+String _normalizedQuizDifficulty(Object? value) {
+  switch (value?.toString().trim().toLowerCase()) {
+    case 'junior':
+    case 'easy':
+      return 'easy';
+    case 'middle':
+    case 'medium':
+      return 'medium';
+    case 'senior':
+    case 'leader':
+    case 'hard':
+      return 'hard';
+    default:
+      return value?.toString() ?? 'easy';
+  }
+}
+
 /// Model matching the de_mobile_app."quiz-question" + "quiz-answer" joined schema
 class QuizQuestionModel {
   final String id;
@@ -76,7 +93,7 @@ class QuizQuestionModel {
       correctIndex: correctIndex,
       correctIndices: correctIndices,
       explanation: explanationText,
-      difficulty: questionRow['difficulty']?.toString() ?? 'junior',
+      difficulty: _normalizedQuizDifficulty(questionRow['difficulty']),
       proTip: questionRow['pro_tips']?.toString() ?? '',
       interviewTip: questionRow['interview_tips']?.toString() ?? '',
       hint: questionRow['hint']?.toString() ?? '',
@@ -138,7 +155,7 @@ class QuizQuestionModel {
           .map((value) => (value as num).toInt())
           .toList(),
       explanation: map['explanation']?.toString() ?? '',
-      difficulty: map['difficulty']?.toString() ?? 'junior',
+      difficulty: _normalizedQuizDifficulty(map['difficulty']),
       proTip: map['proTip']?.toString() ?? '',
       interviewTip: map['interviewTip']?.toString() ?? '',
       hint: map['hint']?.toString() ?? '',
@@ -175,7 +192,7 @@ class QuizQuestionMeta {
     return QuizQuestionMeta(
       id: row['question_id']?.toString() ?? '',
       text: row['question']?.toString() ?? '',
-      difficulty: row['difficulty']?.toString() ?? 'junior',
+      difficulty: _normalizedQuizDifficulty(row['difficulty']),
       type: row['type']?.toString() ?? 'mcq',
       topicId: (row['topic'] as num?)?.toInt() ?? 0,
       subtopicId: (row['sub_topics'] as num?)?.toInt(),
@@ -751,9 +768,13 @@ class QuizService {
     }
   }
 
-  Future<Map<String, int>> fetchTopicQuestionCounts() async {
+  Future<Map<String, int>> fetchTopicQuestionCounts({
+    bool forceRefresh = false,
+  }) async {
     // Return from cache if still fresh (avoids N+1 queries on repeat navigation)
-    if (_topicCountsCache != null && !_topicCountsCache!.isExpired) {
+    if (!forceRefresh &&
+        _topicCountsCache != null &&
+        !_topicCountsCache!.isExpired) {
       return _topicCountsCache!.data;
     }
     try {

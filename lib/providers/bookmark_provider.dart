@@ -6,6 +6,20 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Bookmark type enum to distinguish between saved Interview Questions and Quiz Questions.
 enum BookmarkType { question, quiz }
 
+String _quizDifficultyLabel(String value) {
+  switch (value.trim().toLowerCase()) {
+    case 'junior':
+      return 'easy';
+    case 'middle':
+      return 'medium';
+    case 'senior':
+    case 'leader':
+      return 'hard';
+    default:
+      return value;
+  }
+}
+
 // ── Saved item data models ────────────────────────────────────────────────────
 
 /// Lightweight snapshot of a quiz question stored with the bookmark.
@@ -42,7 +56,7 @@ class BookmarkedQuizQuestion {
         topicId: j['topicId'] as String? ?? '',
         topicName: j['topicName'] as String? ?? '',
         category: j['category'] as String? ?? '',
-        difficulty: j['difficulty'] as String? ?? '',
+        difficulty: _quizDifficultyLabel(j['difficulty'] as String? ?? ''),
       );
 }
 

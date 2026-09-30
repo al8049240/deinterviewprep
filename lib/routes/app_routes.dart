@@ -8,7 +8,7 @@ import '../presentation/bookmarks_screen/bookmarks_screen.dart';
 import '../presentation/dashboard_screen/dashboard_screen.dart';
 import '../presentation/flashcards_screen/flashcards_screen.dart';
 import '../presentation/question_bank_screen/question_bank_screen.dart';
-import '../presentation/code_playground_screen/code_playground_list_screen.dart';
+import '../presentation/developer_experiences_screen/developer_experiences_list_screen.dart';
 import '../presentation/performance_trends_screen/performance_trends_screen.dart';
 import '../presentation/main_screen/main_screen.dart';
 import '../presentation/spark_subtopic_screen/spark_subtopic_screen.dart';
@@ -17,6 +17,7 @@ import '../presentation/settings_screen/settings_screen.dart';
 import '../presentation/custom_quiz_builder_screen/custom_quiz_builder_screen.dart';
 import '../presentation/auth_screen/auth_screen.dart';
 import '../presentation/statistics_screen/statistics_screen.dart';
+import '../presentation/splash_screen/splash_screen.dart';
 
 class AppRoutes {
   static const String initial = '/';
@@ -28,7 +29,7 @@ class AppRoutes {
   static const String dashboardScreen = '/dashboard-screen';
   static const String flashcardsScreen = '/flashcards-screen';
   static const String questionBankScreen = '/question-bank-screen';
-  static const String codePlaygroundScreen = '/code-playground-screen';
+  static const String devStoriesScreen = '/dev-stories-screen';
   static const String performanceTrendsScreen = '/performance-trends-screen';
   static const String sparkSubtopicScreen = '/spark-subtopic-screen';
   static const String subtopicScreen = '/subtopic-screen';
@@ -65,7 +66,7 @@ final GoRouter appRouter = GoRouter(
       path: AppRoutes.initial,
       pageBuilder: (context, state) => CustomTransitionPage(
         key: state.pageKey,
-        child: const MainScreen(initialIndex: 0),
+        child: const SplashScreen(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return FadeTransition(
             opacity: CurvedAnimation(
@@ -110,10 +111,10 @@ final GoRouter appRouter = GoRouter(
           _slidePage(key: state.pageKey, child: const QuestionBankScreen()),
     ),
     GoRoute(
-      path: AppRoutes.codePlaygroundScreen,
+      path: AppRoutes.devStoriesScreen,
       pageBuilder: (context, state) => _slidePage(
         key: state.pageKey,
-        child: const CodePlaygroundListScreen(),
+        child: const DeveloperExperiencesListScreen(),
       ),
     ),
     GoRoute(

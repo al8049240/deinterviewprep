@@ -52,10 +52,10 @@ class _FaqScreenState extends State<FaqScreen> {
       keywords: 'revision study concepts interview',
     ),
     _FaqItem(
-      question: 'What is the Interview Code Library?',
+      question: 'What are Data Dev Stories?',
       answer:
-          'The Interview Code Library provides useful SQL and Python examples and patterns you can review before interviews.',
-      keywords: 'coding exercise solution workspace',
+          'Data Dev Stories are production incidents, engineering lessons, and architecture trade-offs organized in STAR format. Serious Mode members can also save their own experiences.',
+      keywords: 'developer stories incidents lessons architecture star',
     ),
     _FaqItem(
       question: 'How do I set a study reminder?',

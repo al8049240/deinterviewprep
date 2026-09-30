@@ -5,11 +5,13 @@ import '../../../theme/app_theme.dart';
 class TopicsSearchBarWidget extends StatelessWidget {
   final TextEditingController controller;
   final ValueChanged<String> onChanged;
+  final String hintText;
 
   const TopicsSearchBarWidget({
     super.key,
     required this.controller,
     required this.onChanged,
+    this.hintText = 'Search For Skill',
   });
 
   @override
@@ -38,7 +40,7 @@ class TopicsSearchBarWidget extends StatelessWidget {
             color: const Color(0xFF1A1A1A),
           ),
           decoration: InputDecoration(
-            hintText: 'Search For Skill',
+            hintText: hintText,
             hintStyle: GoogleFonts.dmSans(
               fontSize: 14,
               color: const Color(0xFF9E9E9E),

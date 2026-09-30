@@ -77,6 +77,15 @@ const List<Map<String, dynamic>> _kTopicMeta = [
     'iconColor': 0xFF1565C0,
   },
   {
+    'dbName': 'SQL Coding Practice',
+    'id': 'sql_coding_practice',
+    'name': 'SQL Coding Practice',
+    'category': 'Database',
+    'iconName': 'code',
+    'isPro': false,
+    'iconColor': 0xFF00695C,
+  },
+  {
     'dbName': 'Python',
     'id': 'python',
     'name': 'Python',
@@ -84,6 +93,24 @@ const List<Map<String, dynamic>> _kTopicMeta = [
     'iconName': 'code',
     'isPro': false,
     'iconColor': 0xFF2E7D32,
+  },
+  {
+    'dbName': 'Python Coding Practice',
+    'id': 'python_coding_practice',
+    'name': 'Python Coding Practice',
+    'category': 'Programming',
+    'iconName': 'code',
+    'isPro': false,
+    'iconColor': 0xFF33691E,
+  },
+  {
+    'dbName': 'PySpark Coding Practice',
+    'id': 'pyspark_coding_practice',
+    'name': 'PySpark Coding Practice',
+    'category': 'Big Data',
+    'iconName': 'code',
+    'isPro': false,
+    'iconColor': 0xFFE65100,
   },
   {
     'dbName': 'Kafka',
@@ -205,6 +232,7 @@ class _TopicsListScreenState extends State<TopicsListScreen>
         )
         .toList();
     _isProUnlocked = _proService.isProUnlocked;
+    _proService.addListener(_onProChanged);
     _fabAnimController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),
@@ -221,7 +249,11 @@ class _TopicsListScreenState extends State<TopicsListScreen>
   /// Fetch live question counts per topic from Supabase and update the list.
   Future<void> _fetchLiveCounts() async {
     try {
-      final counts = await QuizService.instance.fetchTopicQuestionCounts();
+      // Topic totals can change after content migrations. Always refresh when
+      // this screen opens instead of displaying the 10-minute cached value.
+      final counts = await QuizService.instance.fetchTopicQuestionCounts(
+        forceRefresh: true,
+      );
       if (mounted && counts.isNotEmpty) {
         setState(() {
           _topics = _kTopicMeta.map((meta) {
@@ -243,9 +275,15 @@ class _TopicsListScreenState extends State<TopicsListScreen>
 
   @override
   void dispose() {
+    _proService.removeListener(_onProChanged);
     _searchController.dispose();
     _fabAnimController.dispose();
     super.dispose();
+  }
+
+  void _onProChanged() {
+    if (!mounted || _isProUnlocked == _proService.isProUnlocked) return;
+    setState(() => _isProUnlocked = _proService.isProUnlocked);
   }
 
   List<TopicModel> get _filteredTopics {
@@ -364,7 +402,7 @@ class _TopicsListScreenState extends State<TopicsListScreen>
               selected: _selectedCategory,
               onSelected: (cat) => setState(() => _selectedCategory = cat),
             ),
-            const ProBannerWidget(),
+            if (!_isProUnlocked) const ProBannerWidget(),
             _BuildCustomMockBanner(
               isLocked: !_isProUnlocked,
               onLocked: () => showModalBottomSheet(
@@ -591,8 +629,7 @@ class _TopicLockedSheetState extends State<_TopicLockedSheet> {
       ['Flashcards', 'Limited', '110+'],
       ['Interview Scenarios', 'Limited', '24+'],
       ['Data Dev Stories', '✗', '✓'],
-      ['Interview Code Library', '✗', '✓'],
-      ['SQL/Python Practice', '✗', '✓'],
+      ['SQL/Python/PySpark Practice', '✗', '✓'],
       ['Custom Quizzes', '✗', '✓'],
       ['Progress Statistics', 'Locked', 'Full'],
       ['All Difficulty Levels', '✗', '✓'],
@@ -810,7 +847,7 @@ class _TopicLockedSheetState extends State<_TopicLockedSheet> {
                           ),
                         )
                       : Text(
-                          '\$9.99 launch offer — Lifetime access',
+                          ProService().purchaseCtaText,
                           style: GoogleFonts.dmSans(
                             fontSize: 14,
                             fontWeight: FontWeight.w700,

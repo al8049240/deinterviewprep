@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../services/auth_service.dart';
 import '../../services/pro_service.dart';
 import '../../theme/app_theme.dart';
+import '../auth_screen/auth_screen.dart';
 
 class PaywallScreen extends StatefulWidget {
   const PaywallScreen({super.key});
@@ -13,6 +15,8 @@ class PaywallScreen extends StatefulWidget {
 
 class _PaywallScreenState extends State<PaywallScreen> {
   final ProService _proService = ProService();
+  bool _isSigningIn = false;
+  String? _authError;
 
   @override
   void initState() {
@@ -36,9 +40,41 @@ class _PaywallScreenState extends State<PaywallScreen> {
     }
   }
 
+  Future<bool> _requireSignIn() async {
+    setState(() => _authError = null);
+    if (AuthService.instance.isSignedIn) return true;
+
+    setState(() => _isSigningIn = true);
+    final signedIn = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const AuthScreen()),
+    );
+    if (mounted) setState(() => _isSigningIn = false);
+    if (signedIn == true && AuthService.instance.isSignedIn) {
+      await _proService.refreshEntitlement();
+      return true;
+    }
+    if (mounted) {
+      setState(() =>
+          _authError = 'Sign in or create an account to continue.');
+    }
+    return false;
+  }
+
+  Future<void> _purchaseWithSignIn() async {
+    if (!await _requireSignIn()) return;
+    await _proService.purchaseLifetime();
+  }
+
+  Future<void> _restoreWithSignIn() async {
+    if (!await _requireSignIn()) return;
+    await _proService.restorePurchases();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final busy = _proService.purchasePending || _proService.restorePending;
+    final busy = _isSigningIn ||
+        _proService.purchasePending ||
+        _proService.restorePending;
     final price = _proService.displayPrice;
 
     return Container(
@@ -110,7 +146,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
-                          'LAUNCH OFFER • Regular price ${r'$14.99'}',
+                          _launchOfferText(),
                           style: GoogleFonts.dmSans(
                             fontSize: 11,
                             fontWeight: FontWeight.w800,
@@ -162,13 +198,24 @@ class _PaywallScreenState extends State<PaywallScreen> {
                         ),
                       ),
                     ],
+                    if (_authError != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        _authError!,
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.dmSans(
+                          fontSize: 12,
+                          color: Colors.red.shade700,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 16),
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
                         onPressed: busy || _proService.isLoadingStore
                             ? null
-                            : _proService.purchaseLifetime,
+                            : _purchaseWithSignIn,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFFFF8C00),
                           foregroundColor: Colors.white,
@@ -188,7 +235,9 @@ class _PaywallScreenState extends State<PaywallScreen> {
                                 ),
                               )
                             : Text(
-                                'Unlock forever for $price',
+                                AuthService.instance.isSignedIn
+                                    ? 'Unlock forever for $price'
+                                    : 'Sign in to continue • $price',
                                 style: GoogleFonts.dmSans(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w700,
@@ -197,7 +246,9 @@ class _PaywallScreenState extends State<PaywallScreen> {
                       ),
                     ),
                     TextButton(
-                      onPressed: busy ? null : _proService.restorePurchases,
+                      onPressed: _proService.restorePending
+                          ? null
+                          : _restoreWithSignIn,
                       child: Text(
                         _proService.restorePending
                             ? 'Restoring…'
@@ -225,6 +276,26 @@ class _PaywallScreenState extends State<PaywallScreen> {
       ),
     );
   }
+
+  String _launchOfferText() {
+    final end = ProService.launchEndsAt;
+    if (end == null) return 'LAUNCH OFFER • Regular price ${r'$10.00'}';
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return 'LAUNCH OFFER • Ends ${months[end.month - 1]} ${end.day}, ${end.year}';
+  }
 }
 
 class _FeatureList extends StatelessWidget {
@@ -244,10 +315,6 @@ class _FeatureList extends StatelessWidget {
     (
       'Offline mode coming soon',
       'Download quizzes for uninterrupted practice without internet',
-    ),
-    (
-      'Interview Code Library',
-      'Useful SQL and Python patterns for technical interviews',
     ),
     (
       'Monthly certification questions',

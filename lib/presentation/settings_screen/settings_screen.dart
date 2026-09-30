@@ -1244,7 +1244,7 @@ class _PurchaseHistorySheet extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        'One-time purchase • \$19.99',
+                        'One-time purchase • \$5.00',
                         style: GoogleFonts.dmSans(
                           fontSize: 12,
                           color: Colors.grey.shade500,

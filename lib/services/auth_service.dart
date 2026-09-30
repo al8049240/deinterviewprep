@@ -51,6 +51,14 @@ class AuthService {
 
   bool get isSignedIn => currentUser != null;
 
+  bool get isSignedInWithGoogle {
+    final user = currentUser;
+    if (user == null) return false;
+    if (user.appMetadata['provider'] == 'google') return true;
+    return user.identities?.any((identity) => identity.provider == 'google') ??
+        false;
+  }
+
   Stream<AuthState> get authStateChanges => _client.auth.onAuthStateChange;
 
   /// Sign up with email and password.

@@ -84,7 +84,7 @@ class TopicCardWidget extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            if (topic.isPro)
+            if (topic.isPro && !isProUnlocked)
               Container(
                 margin: const EdgeInsets.only(left: 6),
                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),

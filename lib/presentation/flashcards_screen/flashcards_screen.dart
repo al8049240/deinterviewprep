@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import '../../routes/app_routes.dart';
 import '../../theme/app_theme.dart';
 import '../../services/auth_service.dart';
 import '../../services/pro_service.dart';
@@ -10,6 +12,8 @@ import '../../providers/bookmark_provider.dart';
 import '../bookmarks_screen/bookmarks_screen.dart';
 import '../performance_trends_screen/performance_trends_screen.dart';
 import '../paywall_screen/paywall_screen.dart';
+import '../topics_list_screen/widgets/pro_banner_widget.dart';
+import '../topics_list_screen/widgets/topics_search_bar_widget.dart';
 
 class FlashcardsScreen extends StatefulWidget {
   /// When set, the screen shows only this specific flashcard (bookmark single-item view).
@@ -25,20 +29,19 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
   static const int _freeCardLimit = 30;
   final ProService _proService = ProService();
   final SupabaseService _supabaseService = SupabaseService.instance;
+  final TextEditingController _searchController = TextEditingController();
 
-  String _selectedCategory = 'All';
+  String _searchQuery = '';
   bool _isLoading = true;
   String? _errorMessage;
 
   // All flashcards fetched from Supabase
   List<FlashcardModel> _allCards = [];
   int _officialCardCount = 0;
-
-  // Topic name -> topic_id mapping from Supabase
-  Map<String, int> _topicNameToId = {};
-
-  // Ordered category list (populated after fetching topics)
-  List<String> _categories = ['All'];
+  Map<int, String> _topicNames = {};
+  Map<int, String> _subtopicNames = {};
+  int? _selectedTopicId;
+  int? _selectedSubtopicId;
 
   // Category display name -> canonical topic name mapping
   // Used to match Supabase topic names to our display categories
@@ -62,6 +65,7 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
   @override
   void dispose() {
     _proService.removeListener(_onProChanged);
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -91,6 +95,13 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
     return topicName; // fallback: use topic name as-is
   }
 
+  String _displayTopicName(String databaseName) {
+    if (databaseName.trim().toLowerCase() == 'ai for data engineering') {
+      return 'AI Agents for Data Engineering';
+    }
+    return databaseName;
+  }
+
   Future<void> _loadFlashcards() async {
     setState(() {
       _isLoading = true;
@@ -105,25 +116,35 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
 
       final results = await Future.wait([
         _supabaseService.fetchTopics(),
+        _supabaseService.fetchSubtopics(),
         _supabaseService.fetchFlashcards(),
         userFlashcardsFuture,
       ]);
 
       final topicsRaw = results[0];
-      final flashcardsRaw = results[1];
-      final userFlashcardsRaw = results[2];
+      final subtopicsRaw = results[1];
+      final flashcardsRaw = results[2];
+      final userFlashcardsRaw = results[3];
 
       // Build topic id -> display category map
       final Map<int, String> topicIdToCategory = {};
-      final Map<String, int> topicNameToId = {};
-
+      final Map<int, String> topicNames = {};
       for (final t in topicsRaw) {
         final id = (t['id'] as num?)?.toInt();
         final name = t['name']?.toString() ?? '';
         if (id != null) {
           final category = _mapTopicToCategory(name);
           topicIdToCategory[id] = category;
-          topicNameToId[name] = id;
+          topicNames[id] = name;
+        }
+      }
+
+      final subtopicNames = <int, String>{};
+      for (final row in subtopicsRaw) {
+        final id = (row['id'] as num?)?.toInt();
+        final topicId = (row['topic_id'] as num?)?.toInt();
+        if (id != null && topicId != null) {
+          subtopicNames[id] = row['name']?.toString() ?? 'Subtopic';
         }
       }
 
@@ -154,41 +175,12 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
         );
       }
 
-      // Build category list from what's actually in the data
-      final Set<String> categoriesInData = {};
-      for (final c in cards) {
-        categoriesInData.add(c.category);
-      }
-
-      // Preserve preferred order
-      const preferredOrder = [
-        'SQL',
-        'Architecture',
-        'Orchestration',
-        'Cloud Data Lakes',
-        'PySpark',
-        'System Design',
-        'Custom',
-      ];
-      final orderedCategories = <String>['All'];
-      for (final cat in preferredOrder) {
-        if (categoriesInData.contains(cat)) {
-          orderedCategories.add(cat);
-        }
-      }
-      // Add any remaining categories not in preferred order
-      for (final cat in categoriesInData) {
-        if (!orderedCategories.contains(cat)) {
-          orderedCategories.add(cat);
-        }
-      }
-
       if (mounted) {
         setState(() {
           _allCards = cards;
           _officialCardCount = flashcardsRaw.length;
-          _topicNameToId = topicNameToId;
-          _categories = orderedCategories;
+          _topicNames = topicNames;
+          _subtopicNames = subtopicNames;
           _isLoading = false;
         });
       }
@@ -207,8 +199,26 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
     if (widget.initialCardId != null) {
       return _allCards.where((c) => c.id == widget.initialCardId).toList();
     }
-    if (_selectedCategory == 'All') return _allCards;
-    return _allCards.where((c) => c.category == _selectedCategory).toList();
+    return _allCards.where((card) {
+      final matchesTopic =
+          _selectedTopicId == null ||
+          (_selectedTopicId == -1
+              ? card.topicId == null
+              : card.topicId == _selectedTopicId);
+      final matchesSubtopic =
+          _selectedSubtopicId == null ||
+          (_selectedSubtopicId == -1
+              ? card.subtopicId == null
+              : card.subtopicId == _selectedSubtopicId);
+      final query = _searchQuery.trim().toLowerCase();
+      final matchesSearch =
+          query.isEmpty ||
+          card.front.toLowerCase().contains(query) ||
+          card.back.toLowerCase().contains(query) ||
+          card.category.toLowerCase().contains(query) ||
+          card.tags.any((tag) => tag.toLowerCase().contains(query));
+      return matchesTopic && matchesSubtopic && matchesSearch;
+    }).toList();
   }
 
   void _toggleBookmark(FlashcardModel card) {
@@ -255,42 +265,57 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
         return Scaffold(
           backgroundColor: AppTheme.backgroundLight,
           appBar: AppBar(
-            title: Row(
+            backgroundColor: AppTheme.primary,
+            elevation: 0,
+            leading: Padding(
+              padding: const EdgeInsets.all(8),
+              child: GestureDetector(
+                onTap: () {
+                  if (_selectedSubtopicId != null) {
+                    setState(() => _selectedSubtopicId = null);
+                  } else if (_selectedTopicId != null) {
+                    setState(() => _selectedTopicId = null);
+                  } else {
+                    context.go(AppRoutes.initial);
+                  }
+                },
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withAlpha(38),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    _selectedTopicId == null
+                        ? Icons.home_rounded
+                        : Icons.arrow_back_rounded,
+                    color: Colors.white,
+                    size: 22,
+                  ),
+                ),
+              ),
+            ),
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Text(
+                  'DEInterviewPrep',
+                  style: GoogleFonts.dmSans(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
                 Text(
                   widget.initialCardId != null
                       ? 'Bookmarked Flashcard'
                       : 'Flashcards',
                   style: GoogleFonts.dmSans(
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
+                    fontSize: 12,
+                    color: Colors.white.withAlpha(204),
                   ),
                 ),
-                if (!_isLoading && widget.initialCardId == null) ...[
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withAlpha(50),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      '${_allCards.length} cards',
-                      style: GoogleFonts.dmSans(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ],
               ],
             ),
-            backgroundColor: AppTheme.primary,
-            iconTheme: const IconThemeData(color: Colors.white),
             actions: [
               // View Bookmarks shortcut
               IconButton(
@@ -353,115 +378,21 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
                     ],
                   ),
                 )
+              : widget.initialCardId == null && _selectedTopicId == null
+              ? _buildTopicList()
+              : widget.initialCardId == null && _selectedSubtopicId == null
+              ? _buildSubtopicList()
               : Column(
                   children: [
                     // Category Filter — hidden when showing a single bookmarked card
-                    if (widget.initialCardId == null)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.filter_list_rounded,
-                              size: 16,
-                              color: Colors.grey.shade600,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Category:',
-                              style: GoogleFonts.dmSans(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Container(
-                                height: 38,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: AppTheme.backgroundLight,
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(
-                                    color: _selectedCategory != 'All'
-                                        ? AppTheme.primary
-                                        : Colors.grey.shade300,
-                                  ),
-                                ),
-                                child: DropdownButtonHideUnderline(
-                                  child: DropdownButton<String>(
-                                    value: _selectedCategory,
-                                    isExpanded: true,
-                                    icon: Icon(
-                                      Icons.keyboard_arrow_down_rounded,
-                                      size: 18,
-                                      color: _selectedCategory != 'All'
-                                          ? AppTheme.primary
-                                          : Colors.grey.shade500,
-                                    ),
-                                    style: GoogleFonts.dmSans(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                      color: _selectedCategory != 'All'
-                                          ? AppTheme.primary
-                                          : const Color(0xFF444444),
-                                    ),
-                                    items: _categories
-                                        .map(
-                                          (cat) => DropdownMenuItem<String>(
-                                            value: cat,
-                                            child: Text(
-                                              cat,
-                                              style: GoogleFonts.dmSans(
-                                                fontSize: 13,
-                                                fontWeight: FontWeight.w500,
-                                                color: cat == _selectedCategory
-                                                    ? AppTheme.primary
-                                                    : const Color(0xFF444444),
-                                              ),
-                                            ),
-                                          ),
-                                        )
-                                        .toList(),
-                                    onChanged: (value) {
-                                      if (value != null) {
-                                        setState(
-                                          () => _selectedCategory = value,
-                                        );
-                                      }
-                                    },
-                                  ),
-                                ),
-                              ),
-                            ),
-                            if (_selectedCategory != 'All') ...[
-                              const SizedBox(width: 8),
-                              GestureDetector(
-                                onTap: () =>
-                                    setState(() => _selectedCategory = 'All'),
-                                child: Container(
-                                  padding: const EdgeInsets.all(6),
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.primary.withAlpha(18),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(
-                                      color: AppTheme.primary.withAlpha(60),
-                                    ),
-                                  ),
-                                  child: Icon(
-                                    Icons.close_rounded,
-                                    size: 14,
-                                    color: AppTheme.primary,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
+                    if (widget.initialCardId == null) ...[
+                      TopicsSearchBarWidget(
+                        controller: _searchController,
+                        hintText: 'Search flashcards',
+                        onChanged: (value) =>
+                            setState(() => _searchQuery = value),
                       ),
+                    ],
 
                     // Cards count info
                     Padding(
@@ -478,7 +409,7 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
                             widget.initialCardId != null
                                 ? '1 bookmarked flashcard'
                                 : _proService.isProUnlocked
-                                ? '${cards.length} flashcard${cards.length == 1 ? '' : 's'} in $_selectedCategory'
+                                ? '${cards.length} flashcard${cards.length == 1 ? '' : 's'} in ${_subtopicNames[_selectedSubtopicId] ?? 'this subtopic'}'
                                 : '${cards.length} cards • first $_freeCardLimit are free',
                             style: GoogleFonts.dmSans(
                               fontSize: 12,
@@ -494,7 +425,9 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
                       child: cards.isEmpty
                           ? Center(
                               child: Text(
-                                'No cards in this category',
+                                _searchQuery.isNotEmpty
+                                    ? 'No flashcards match your search'
+                                    : 'No cards in this category',
                                 style: GoogleFonts.dmSans(color: Colors.grey),
                               ),
                             )
@@ -509,7 +442,8 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
                               itemBuilder: (context, index) {
                                 final card = cards[index];
                                 final globalIndex = _allCards.indexOf(card);
-                                final isLocked = !_proService.isProUnlocked &&
+                                final isLocked =
+                                    !_proService.isProUnlocked &&
                                     globalIndex >= _freeCardLimit &&
                                     globalIndex < _officialCardCount;
                                 final isBookmarked = bookmarkProvider
@@ -518,7 +452,8 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
                                   card: card,
                                   index: index,
                                   isBookmarked: isBookmarked,
-                                  initiallyExpanded: !isLocked &&
+                                  initiallyExpanded:
+                                      !isLocked &&
                                       widget.initialCardId == card.id,
                                   isLocked: isLocked,
                                   onLocked: _showPaywall,
@@ -537,7 +472,8 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
                     ),
                   ],
                 ),
-          floatingActionButton: widget.initialCardId == null && AuthService.instance.isSignedIn
+          floatingActionButton:
+              widget.initialCardId == null && AuthService.instance.isSignedIn
               ? FloatingActionButton.extended(
                   onPressed: () => _showCreateFlashcardDialog(context),
                   backgroundColor: AppTheme.primary,
@@ -554,6 +490,160 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
     );
   }
 
+  Widget _buildTopicList() {
+    final counts = <int, int>{};
+    for (final card in _allCards) {
+      final topicId = card.topicId ?? -1;
+      counts[topicId] = (counts[topicId] ?? 0) + 1;
+    }
+    final topicIds = counts.keys.toList()
+      ..sort((a, b) {
+        final first = a == -1
+            ? 'Custom'
+            : _displayTopicName(_topicNames[a] ?? 'Topic');
+        final second = b == -1
+            ? 'Custom'
+            : _displayTopicName(_topicNames[b] ?? 'Topic');
+        return first.compareTo(second);
+      });
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (!_proService.isProUnlocked) const ProBannerWidget(),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 6),
+          child: Text(
+            'Choose a Topic',
+            style: GoogleFonts.dmSans(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF1A1A2E),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+          child: Text(
+            'Select a topic to browse its flashcard subtopics.',
+            style: GoogleFonts.dmSans(
+              fontSize: 13,
+              color: const Color(0xFF777777),
+            ),
+          ),
+        ),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+            itemCount: topicIds.length,
+            itemBuilder: (context, index) {
+              final topicId = topicIds[index];
+              return _FlashcardHierarchyCard(
+                icon: Icons.style_rounded,
+                color: _hierarchyColor(index),
+                title: topicId == -1
+                    ? 'Custom'
+                    : _displayTopicName(
+                        _topicNames[topicId] ?? 'Topic $topicId',
+                      ),
+                subtitle: '${counts[topicId]} flashcards',
+                onTap: () => setState(() {
+                  _selectedTopicId = topicId;
+                  _selectedSubtopicId = null;
+                  _searchQuery = '';
+                  _searchController.clear();
+                }),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSubtopicList() {
+    final counts = <int, int>{};
+    for (final card in _allCards) {
+      final belongsToTopic = _selectedTopicId == -1
+          ? card.topicId == null
+          : card.topicId == _selectedTopicId;
+      if (!belongsToTopic) continue;
+      final subtopicId = card.subtopicId ?? -1;
+      counts[subtopicId] = (counts[subtopicId] ?? 0) + 1;
+    }
+    final subtopicIds = counts.keys.toList()
+      ..sort(
+        (a, b) => (_subtopicNames[a] ?? (a == -1 ? 'Custom' : 'Subtopic'))
+            .compareTo(_subtopicNames[b] ?? (b == -1 ? 'Custom' : 'Subtopic')),
+      );
+    final topicName = _selectedTopicId == -1
+        ? 'Custom'
+        : _displayTopicName(_topicNames[_selectedTopicId] ?? 'Flashcards');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 6),
+          child: Text(
+            'Choose a Subtopic',
+            style: GoogleFonts.dmSans(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF1A1A2E),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+          child: Text(
+            '$topicName • ${counts.values.fold<int>(0, (sum, count) => sum + count)} flashcards',
+            style: GoogleFonts.dmSans(
+              fontSize: 13,
+              color: const Color(0xFF777777),
+            ),
+          ),
+        ),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+            itemCount: subtopicIds.length,
+            itemBuilder: (context, index) {
+              final subtopicId = subtopicIds[index];
+              return _FlashcardHierarchyCard(
+                icon: Icons.layers_rounded,
+                color: _hierarchyColor(index),
+                title:
+                    _subtopicNames[subtopicId] ??
+                    (subtopicId == -1
+                        ? 'Custom Cards'
+                        : 'Subtopic $subtopicId'),
+                subtitle: '${counts[subtopicId]} flashcards',
+                onTap: () => setState(() {
+                  _selectedSubtopicId = subtopicId;
+                  _searchQuery = '';
+                  _searchController.clear();
+                }),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Color _hierarchyColor(int index) {
+    const colors = [
+      Color(0xFF1565C0),
+      Color(0xFF2E7D32),
+      Color(0xFF6A1B9A),
+      Color(0xFFE64A19),
+      Color(0xFF00838F),
+      Color(0xFF4527A0),
+    ];
+    return colors[index % colors.length];
+  }
+
   void _showCreateFlashcardDialog(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -563,9 +653,6 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
         onCreated: (FlashcardModel newCard) {
           setState(() {
             _allCards.insert(0, newCard);
-            if (!_categories.contains(newCard.category)) {
-              _categories.add(newCard.category);
-            }
           });
         },
       ),
@@ -574,6 +661,93 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
 }
 
 // ── Create Flashcard Bottom Sheet ─────────────────────────────────────────────
+
+class _FlashcardHierarchyCard extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const _FlashcardHierarchyCard({
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(15),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              children: [
+                Container(
+                  width: 50,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: color.withAlpha(31),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(icon, color: color, size: 26),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: GoogleFonts.dmSans(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF1A1A1A),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        subtitle,
+                        style: GoogleFonts.dmSans(
+                          fontSize: 11,
+                          color: const Color(0xFF777777),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppTheme.primary.withAlpha(153),
+                  size: 22,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _CreateFlashcardSheet extends StatefulWidget {
   final void Function(FlashcardModel) onCreated;

@@ -53,15 +53,30 @@ To run the app with environment variables defined in an env.json file, follow th
 
 ### Test Serious Mode without purchasing
 
-Premium access can be enabled in debug builds only:
+Serious Mode is unlocked automatically in debug builds:
 
 ```bash
-flutter run --dart-define-from-file=env.json --dart-define=DEV_UNLOCK_PRO=true
+flutter run --dart-define-from-file=env.json
 ```
 
-For VS Code, add `"--dart-define=DEV_UNLOCK_PRO=true"` to the launch
-configuration's `args`. Remove the flag and perform a full restart to test
-Chill Mode again. Profile and release builds always ignore this override.
+Profile and release builds do not receive this development unlock and require
+a valid purchased or server-managed entitlement.
+
+### Configure Google Play purchase verification
+
+Lifetime purchases are verified by the `verify-play-purchase` Supabase Edge
+Function before Pro access is granted. Apply the Supabase migrations, create a
+Google Cloud service account with access to the app in Google Play Console,
+and store the complete service-account JSON as a function secret:
+
+```bash
+supabase secrets set GOOGLE_PLAY_SERVICE_ACCOUNT_JSON='<service-account-json>'
+supabase functions deploy verify-play-purchase
+```
+
+Never put the service-account JSON or the Supabase service-role key in the
+Flutter app. The Edge Function verifies the signed-in user and the Google Play
+purchase, then writes `de_mobile_app.user_entitlements` with admin credentials.
 
 ## 📁 Project Structure
 
@@ -144,8 +159,8 @@ configure the USD base price and regional tiers there.
 
 | Product ID | Price | Purpose |
 | --- | ---: | --- |
-| `de_interview_prep_lifetime_launch` | $9.99 | Limited launch promotion |
-| `de_interview_prep_lifetime` | $14.99 | Normal lifetime purchase |
+| `de_interview_prep_lifetime_launch` | $5.00 | Limited launch promotion |
+| `de_interview_prep_lifetime` | $10.00 | Normal lifetime purchase |
 
 Launch builds use the promotional product by default. Build the normal-price
 version with:
@@ -155,6 +170,21 @@ flutter build appbundle --release \
   --dart-define=IAP_LAUNCH_PROMOTION=false \
   --dart-define-from-file=env.json
 ```
+
+For an automatic 45-day launch window, provide the public release timestamp in
+UTC. The app uses the $5 launch product through the end of the window and then
+switches to the $10 lifetime product automatically:
+
+```bash
+flutter build appbundle --release \
+  --dart-define=IAP_LAUNCH_PROMOTION=true \
+  --dart-define=IAP_LAUNCH_START_UTC=2026-10-01T00:00:00Z \
+  --dart-define-from-file=env.json
+```
+
+If `IAP_LAUNCH_START_UTC` is omitted, the launch promotion remains enabled for
+backward compatibility. Use the actual Production release timestamp, not the
+internal-testing date.
 
 Before publishing, replace the placeholder Android application ID and debug
 release signing configuration, configure the matching iOS bundle ID, accept

@@ -191,6 +191,20 @@ class SupabaseService {
     return List<Map<String, dynamic>>.from(result as List);
   }
 
+  /// Fetch all subtopics used to organize flashcards under their topic.
+  Future<List<Map<String, dynamic>>> fetchSubtopics() async {
+    try {
+      final result = await client
+          .schema('de_mobile_app')
+          .from('subtopics-legacy')
+          .select('id, topic_id, name, description')
+          .order('name', ascending: true);
+      return List<Map<String, dynamic>>.from(result as List);
+    } catch (_) {
+      return [];
+    }
+  }
+
   /// Fetch user-created developer experiences.
   Future<List<Map<String, dynamic>>> fetchUserDeveloperExperiences() async {
     if (!AuthService.instance.isSignedIn) return [];
@@ -220,7 +234,9 @@ class SupabaseService {
     required String keyTakeaway,
   }) async {
     if (!AuthService.instance.isSignedIn) {
-      throw StateError('Please sign in to create a custom developer experience.');
+      throw StateError(
+        'Please sign in to create a custom developer experience.',
+      );
     }
 
     await client
