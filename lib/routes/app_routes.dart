@@ -148,7 +148,7 @@ final GoRouter appRouter = GoRouter(
             correctAnswers: extra?['correctAnswers'] as int? ?? 0,
             timeTakenSeconds: extra?['timeTakenSeconds'] as int? ?? 0,
             topicId: extra?['topicId'] as String? ?? 'sql',
-            maxStreak: extra?['maxStreak'] as int? ?? 0,
+            longestCorrectStreak: extra?['longestCorrectStreak'] as int? ?? 0,
             questions: extra?['questions'] as List<Map<String, dynamic>>? ?? [],
             overrideQuestions:
                 extra?['overrideQuestions'] as List<Map<String, dynamic>>? ??

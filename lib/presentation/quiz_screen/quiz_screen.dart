@@ -111,7 +111,7 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
   late AnimationController _explanationAnimController;
   late Animation<double> _explanationAnim;
   int _currentStreak = 0;
-  int _maxStreak = 0;
+  int _longestCorrectStreak = 0;
   // Guard against double-tap on submit/action buttons
   bool _isSubmitting = false;
 
@@ -431,7 +431,9 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
       _selectedAnswers[_currentIndex] = pending;
       if (isCorrect) {
         _currentStreak++;
-        if (_currentStreak > _maxStreak) _maxStreak = _currentStreak;
+        if (_currentStreak > _longestCorrectStreak) {
+          _longestCorrectStreak = _currentStreak;
+        }
       } else {
         _currentStreak = 0;
       }
@@ -459,7 +461,9 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
       _selectedAnswers[_currentIndex] = isCorrect ? q.correctIndex : -1;
       if (isCorrect) {
         _currentStreak++;
-        if (_currentStreak > _maxStreak) _maxStreak = _currentStreak;
+        if (_currentStreak > _longestCorrectStreak) {
+          _longestCorrectStreak = _currentStreak;
+        }
       } else {
         _currentStreak = 0;
       }
@@ -555,35 +559,35 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
       durationSeconds: _totalSeconds,
     );
 
-    final sourceQuestions = (widget.overrideQuestions != null && widget.overrideQuestions!.isNotEmpty)
+    final sourceQuestions =
+        (widget.overrideQuestions != null &&
+            widget.overrideQuestions!.isNotEmpty)
         ? widget.overrideQuestions!
         : _filteredMaps.take(widget.questionCount).toList();
 
-    final questionsWithAnswers = sourceQuestions
-        .asMap()
-        .entries
-        .map((entry) {
-          final map = Map<String, dynamic>.from(entry.value);
-          final selectedAns = _selectedAnswers[entry.key];
-          if (selectedAns != null) {
-            map['selectedAnswer'] = selectedAns;
-          }
-          return map;
-        })
-        .toList();
+    final questionsWithAnswers = sourceQuestions.asMap().entries.map((entry) {
+      final map = Map<String, dynamic>.from(entry.value);
+      final selectedAns = _selectedAnswers[entry.key];
+      if (selectedAns != null) {
+        map['selectedAnswer'] = selectedAns;
+      }
+      return map;
+    }).toList();
 
     // Save to Supabase statistics (only if quiz was completed with at least 1 answer)
     if (_selectedAnswers.isNotEmpty) {
-      StatisticsRepository.instance.saveQuizAttempt(
-        topicId: widget.topicId,
-        topicName: widget.topicName,
-        totalQuestions: _questions.length,
-        correctAnswers: correct,
-        durationSeconds: _totalSeconds,
-        answeredQuestions: questionsWithAnswers,
-      ).then((_) {
-        if (mounted) context.read<StatisticsProvider>().refresh();
-      });
+      StatisticsRepository.instance
+          .saveQuizAttempt(
+            topicId: widget.topicId,
+            topicName: widget.topicName,
+            totalQuestions: _questions.length,
+            correctAnswers: correct,
+            durationSeconds: _totalSeconds,
+            answeredQuestions: questionsWithAnswers,
+          )
+          .then((_) {
+            if (mounted) context.read<StatisticsProvider>().refresh();
+          });
     }
 
     context.pushReplacement(
@@ -595,7 +599,7 @@ class _QuizScreenState extends State<QuizScreen> with TickerProviderStateMixin {
         'correctAnswers': correct,
         'timeTakenSeconds': _totalSeconds,
         'topicId': widget.topicId,
-        'maxStreak': _maxStreak,
+        'longestCorrectStreak': _longestCorrectStreak,
         'questions': questionsWithAnswers,
         'overrideQuestions': sourceQuestions,
       },

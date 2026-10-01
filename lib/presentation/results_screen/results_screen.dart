@@ -20,7 +20,7 @@ class ResultsScreen extends StatefulWidget {
   final int correctAnswers;
   final int timeTakenSeconds;
   final String topicId;
-  final int maxStreak;
+  final int longestCorrectStreak;
   final List<Map<String, dynamic>> questions;
   final List<Map<String, dynamic>> overrideQuestions;
 
@@ -32,7 +32,7 @@ class ResultsScreen extends StatefulWidget {
     required this.correctAnswers,
     required this.timeTakenSeconds,
     required this.topicId,
-    this.maxStreak = 0,
+    this.longestCorrectStreak = 0,
     this.questions = const [],
     this.overrideQuestions = const [],
   });
@@ -142,8 +142,8 @@ class _ResultsScreenState extends State<ResultsScreen>
     if (!mounted || _reviewPromptChecked) return;
     _reviewPromptChecked = true;
     try {
-      final shouldShow =
-          await ReviewPromptService.instance.shouldShowAutomaticPrompt();
+      final shouldShow = await ReviewPromptService.instance
+          .shouldShowAutomaticPrompt();
       if (!mounted || !shouldShow) return;
       await ReviewPromptService.instance.recordPromptShown();
       if (!mounted) return;
@@ -210,9 +210,7 @@ class _ResultsScreenState extends State<ResultsScreen>
   }
 
   Future<void> _openPlayStoreReview() async {
-    final marketUri = Uri.parse(
-      'market://details?id=com.aa.deinterviewprep',
-    );
+    final marketUri = Uri.parse('market://details?id=com.aa.deinterviewprep');
     final webUri = Uri.parse(
       'https://play.google.com/store/apps/details?id=com.aa.deinterviewprep',
     );
@@ -261,7 +259,7 @@ class _ResultsScreenState extends State<ResultsScreen>
         ),
       ),
       actions: [
-        if (widget.maxStreak > 0)
+        if (widget.longestCorrectStreak > 0)
           Container(
             margin: const EdgeInsets.only(right: 8),
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -279,7 +277,7 @@ class _ResultsScreenState extends State<ResultsScreen>
                 ),
                 const SizedBox(width: 3),
                 Text(
-                  'Best: ${widget.maxStreak}',
+                  'Longest: ${widget.longestCorrectStreak}',
                   style: GoogleFonts.dmSans(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
@@ -453,7 +451,11 @@ class _ResultsScreenState extends State<ResultsScreen>
         ),
         child: Row(
           children: [
-            const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 22),
+            const Icon(
+              Icons.warning_amber_rounded,
+              color: Colors.white,
+              size: 22,
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -465,7 +467,11 @@ class _ResultsScreenState extends State<ResultsScreen>
                 ),
               ),
             ),
-            const Icon(Icons.chevron_right_rounded, color: Colors.white, size: 22),
+            const Icon(
+              Icons.chevron_right_rounded,
+              color: Colors.white,
+              size: 22,
+            ),
           ],
         ),
       ),
@@ -515,7 +521,7 @@ class _ResultsScreenState extends State<ResultsScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Max Streak',
+                  'Longest Correct Streak',
                   style: GoogleFonts.dmSans(
                     fontSize: 12,
                     color: Colors.white70,
@@ -523,8 +529,8 @@ class _ResultsScreenState extends State<ResultsScreen>
                   ),
                 ),
                 Text(
-                  widget.maxStreak > 0
-                      ? '${widget.maxStreak} consecutive correct answer${widget.maxStreak == 1 ? '' : 's'}'
+                  widget.longestCorrectStreak > 0
+                      ? '${widget.longestCorrectStreak} consecutive correct answer${widget.longestCorrectStreak == 1 ? '' : 's'}'
                       : 'No streak this round — keep going!',
                   style: GoogleFonts.dmSans(
                     fontSize: 14,
@@ -551,7 +557,7 @@ class _ResultsScreenState extends State<ResultsScreen>
                 ),
                 const SizedBox(width: 4),
                 Text(
-                  '${widget.maxStreak}',
+                  '${widget.longestCorrectStreak}',
                   style: GoogleFonts.dmSans(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
@@ -667,16 +673,17 @@ class _FailedQuestionsBottomSheet extends StatefulWidget {
   });
 
   @override
-  State<_FailedQuestionsBottomSheet> createState() => _FailedQuestionsBottomSheetState();
+  State<_FailedQuestionsBottomSheet> createState() =>
+      _FailedQuestionsBottomSheetState();
 }
 
-class _FailedQuestionsBottomSheetState extends State<_FailedQuestionsBottomSheet> {
+class _FailedQuestionsBottomSheetState
+    extends State<_FailedQuestionsBottomSheet> {
   final Set<int> _selectedIndices = {};
   final Set<int> _expandedIndices = {};
 
-  List<Map<String, dynamic>> get _selectedQuestions => _selectedIndices
-      .map((index) => widget.failedQuestions[index])
-      .toList();
+  List<Map<String, dynamic>> get _selectedQuestions =>
+      _selectedIndices.map((index) => widget.failedQuestions[index]).toList();
 
   void _toggleSelected(int index) {
     setState(() {
@@ -742,7 +749,9 @@ class _FailedQuestionsBottomSheetState extends State<_FailedQuestionsBottomSheet
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                   decoration: const BoxDecoration(
                     color: Color(0xFFCB3A3A),
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+                    borderRadius: BorderRadius.vertical(
+                      top: Radius.circular(22),
+                    ),
                   ),
                   child: Column(
                     children: [
@@ -781,7 +790,10 @@ class _FailedQuestionsBottomSheetState extends State<_FailedQuestionsBottomSheet
                           ),
                           IconButton(
                             onPressed: () => Navigator.of(context).pop(),
-                            icon: const Icon(Icons.close_rounded, color: Colors.white),
+                            icon: const Icon(
+                              Icons.close_rounded,
+                              color: Colors.white,
+                            ),
                           ),
                         ],
                       ),
@@ -797,23 +809,29 @@ class _FailedQuestionsBottomSheetState extends State<_FailedQuestionsBottomSheet
                     itemBuilder: (context, index) {
                       final q = widget.failedQuestions[index];
                       final questionText = q['text'] as String? ?? 'Question';
-                      final options = (q['options'] as List<dynamic>? ?? const [])
-                          .map((e) => e.toString())
-                          .toList();
+                      final options =
+                          (q['options'] as List<dynamic>? ?? const [])
+                              .map((e) => e.toString())
+                              .toList();
                       final selected = q['selectedAnswer'];
                       final selectedText = selected is int
                           ? (selected >= 0 && selected < options.length
-                              ? options[selected]
-                              : 'No answer selected')
+                                ? options[selected]
+                                : 'No answer selected')
                           : 'No answer selected';
                       final correctIndex = q['correctIndex'] as int? ?? 0;
-                      final correctAnswerText = options.isNotEmpty && correctIndex < options.length
+                      final correctAnswerText =
+                          options.isNotEmpty && correctIndex < options.length
                           ? options[correctIndex]
                           : 'N/A';
                       final explanation = q['explanation'] as String? ?? '';
                       final isExpanded = _expandedIndices.contains(index);
                       final isSelected = _selectedIndices.contains(index);
-                      final difficulty = (q['difficulty'] as String? ?? q['level'] as String? ?? 'JUNIOR').toUpperCase();
+                      final difficulty =
+                          (q['difficulty'] as String? ??
+                                  q['level'] as String? ??
+                                  'JUNIOR')
+                              .toUpperCase();
 
                       return Container(
                         decoration: BoxDecoration(
@@ -833,15 +851,23 @@ class _FailedQuestionsBottomSheetState extends State<_FailedQuestionsBottomSheet
                                   width: 22,
                                   height: 22,
                                   decoration: BoxDecoration(
-                                    color: isSelected ? const Color(0xFFCB3A3A) : Colors.white,
+                                    color: isSelected
+                                        ? const Color(0xFFCB3A3A)
+                                        : Colors.white,
                                     border: Border.all(
-                                      color: isSelected ? const Color(0xFFCB3A3A) : const Color(0xFFDBDBDB),
+                                      color: isSelected
+                                          ? const Color(0xFFCB3A3A)
+                                          : const Color(0xFFDBDBDB),
                                       width: 1.5,
                                     ),
                                     borderRadius: BorderRadius.circular(6),
                                   ),
                                   child: isSelected
-                                      ? const Icon(Icons.check, size: 16, color: Colors.white)
+                                      ? const Icon(
+                                          Icons.check,
+                                          size: 16,
+                                          color: Colors.white,
+                                        )
                                       : null,
                                 ),
                               ),
@@ -854,8 +880,18 @@ class _FailedQuestionsBottomSheetState extends State<_FailedQuestionsBottomSheet
                                   highlightColor: Colors.transparent,
                                 ),
                                 child: ExpansionTile(
-                                  tilePadding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
-                                  childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+                                  tilePadding: const EdgeInsets.fromLTRB(
+                                    10,
+                                    8,
+                                    8,
+                                    8,
+                                  ),
+                                  childrenPadding: const EdgeInsets.fromLTRB(
+                                    14,
+                                    0,
+                                    14,
+                                    14,
+                                  ),
                                   iconColor: const Color(0xFF303030),
                                   collapsedIconColor: const Color(0xFF303030),
                                   onExpansionChanged: (expanded) {
@@ -878,10 +914,15 @@ class _FailedQuestionsBottomSheetState extends State<_FailedQuestionsBottomSheet
                                       ),
                                       const SizedBox(width: 8),
                                       Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
+                                        ),
                                         decoration: BoxDecoration(
                                           color: const Color(0xFFFFE1E1),
-                                          borderRadius: BorderRadius.circular(999),
+                                          borderRadius: BorderRadius.circular(
+                                            999,
+                                          ),
                                         ),
                                         child: Text(
                                           difficulty,
